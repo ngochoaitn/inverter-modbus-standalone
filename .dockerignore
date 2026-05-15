@@ -1,0 +1,10 @@
+node_modules
+.next
+solar.db
+dev.db
+*.db
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+README.md

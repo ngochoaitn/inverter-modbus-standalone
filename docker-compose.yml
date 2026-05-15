@@ -1,0 +1,12 @@
+services:
+  lux-local:
+    build: .
+    container_name: lux-local
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    volumes:
+      - solar-db:/app/data
+
+volumes:
+  solar-db:

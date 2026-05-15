@@ -1,0 +1,116 @@
+# lux-local
+
+Local dashboard for LuxPower hybrid inverters. Connects directly to the inverter over your LAN via the LuxPower Modbus TCP protocol and displays real-time power flow, battery state, and historical charts. No cloud dependency.
+
+## Features
+
+- Real-time power flow: PV → Battery → Grid → Load
+- Up to 6 PV strings (PV1–6)
+- Battery SOC, voltage, charge/discharge power
+- Grid import/export, voltage, frequency
+- Energy-today totals (PV, import, export, battery, load)
+- 1-minute history stored locally in SQLite
+- Light/dark theme toggle
+- Accepts push readings from ESP32 or any external device (no direct inverter access needed)
+
+## Requirements
+
+| Software | Version | Install |
+|----------|---------|---------|
+| Docker Desktop | latest | https://docs.docker.com/get-docker/ |
+| Docker Compose | v2 (included in Docker Desktop) | — |
+
+The inverter must be reachable from the host machine on the same LAN (Modbus TCP port, default **8000**).
+
+## Quick start
+
+```bash
+# 1. Clone the repo
+git clone <repo-url>
+cd inverter-modbus-standalone
+
+# 2. Build and start
+docker compose up --build -d
+
+# 3. Open the dashboard
+#    http://localhost:3000
+```
+
+On first launch you will be redirected to the setup page to enter your inverter details.
+
+## Setup
+
+Navigate to **http://localhost:3000/setup** and fill in:
+
+| Field | Example | Description |
+|-------|---------|-------------|
+| Device S/N | `LUX12345678` | Inverter serial number (on the label) |
+| Dongle S/N | `ESP32-LOCAL` | Dongle/stick serial number |
+| Inverter IP | `192.168.1.100` | Local IP of the inverter |
+| Inverter Port | `8000` | Modbus TCP port (default 8000) |
+
+Click **Save** — the poller starts immediately and the dashboard shows live data.
+
+## Ports
+
+| Port | Protocol | Description |
+|------|----------|-------------|
+| `3000` | HTTP | Web dashboard and REST API |
+
+To change the host port, edit `docker-compose.yml`:
+
+```yaml
+ports:
+  - "8080:3000"   # change 8080 to any available port on your host
+```
+
+## Data persistence
+
+Inverter history and device config are stored in a named Docker volume:
+
+```
+solar-db  →  /app/data/solar.db  (inside the container)
+```
+
+Data survives container restarts and upgrades. To wipe all data:
+
+```bash
+docker compose down -v
+```
+
+## Local development (without Docker)
+
+Requirements: Node.js 22+
+
+```bash
+npm install
+npm run dev
+```
+
+The app runs on **http://localhost:3000**. The SQLite database is created at `./data/solar.db`.
+
+## Upgrade
+
+```bash
+docker compose down
+docker compose up --build -d
+```
+
+The database volume is preserved automatically.
+
+## Troubleshooting
+
+**Dashboard shows "Not configured"** — go to `/setup` and save your inverter details.
+
+**No live data after setup** — verify the inverter IP is reachable from the host and port 8000 is not firewalled. The poller logs connection errors to the container stdout:
+
+```bash
+docker compose logs -f lux-local
+```
+
+**Want to reset the database** — stop the stack, remove the volume, then restart:
+
+```bash
+docker compose down -v
+docker compose up -d
+```

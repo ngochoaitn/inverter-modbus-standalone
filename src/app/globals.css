@@ -1,0 +1,221 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── SF Design Tokens ─────────────────────────────── */
+:root {
+  --sf-bg: #f5f3ed;
+  --sf-panel: #ffffff;
+  --sf-ink: #14181a;
+  --sf-ink-2: #4a5358;
+  --sf-ink-3: #8a9197;
+  --sf-line: #e2ddd2;
+  --sf-line-2: #ecebe4;
+
+  --sf-solar: #5cbf6a;
+  --sf-solar-soft: oklch(94% 0.04 145);
+  --sf-battery: oklch(75% 0.13 75);
+  --sf-battery-soft: oklch(95% 0.04 75);
+  --sf-load: oklch(62% 0.16 25);
+  --sf-load-soft: oklch(95% 0.03 25);
+  --sf-idle: #c8c8be;
+
+  --sf-shadow: 0 4px 20px -2px rgba(0,0,0,0.08), 0 2px 8px -1px rgba(0,0,0,0.04);
+  --sf-shadow-lg: 0 20px 40px -12px rgba(0,0,0,0.12);
+}
+
+[data-theme='dark'] {
+  --sf-bg: #0e1112;
+  --sf-panel: #181c1e;
+  --sf-ink: #f0eee8;
+  --sf-ink-2: #a8aeb0;
+  --sf-ink-3: #6a7174;
+  --sf-line: #2a2f31;
+  --sf-line-2: rgba(32, 36, 38, 0.4);
+  --sf-idle: #3a3f41;
+}
+
+/* ── Base overrides (fe-styles.css sets overflow:hidden on body) ── */
+body {
+  background: var(--sf-bg);
+  color: var(--sf-ink);
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: auto;
+  height: auto;
+  min-height: 100vh;
+  width: auto;
+}
+
+.mono {
+  font-family: "JetBrains Mono", monospace;
+  font-feature-settings: "tnum" 1;
+}
+
+.text-muted { color: var(--sf-ink-3); }
+
+/* ── Dashboard Layout ─────────────────────────────── */
+.sf-layout {
+  display: flex;
+  flex-direction: column;
+  padding: 32px;
+  max-width: 1440px;
+  margin: 0 auto;
+  gap: 32px;
+}
+
+.sf-topbar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--sf-line);
+}
+
+.sf-topbar-row1 {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.solar-flow-dashboard {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 32px;
+}
+
+/* ── Schematic / Wires ────────────────────────────── */
+.sf-stage {
+  background: var(--sf-panel);
+  border: 1px solid var(--sf-line);
+  border-radius: 24px;
+  padding: 32px;
+  box-shadow: var(--sf-shadow);
+  position: relative;
+  min-height: 640px;
+  overflow: hidden;
+}
+
+.sf-schematic {
+  position: relative;
+  width: 820px;
+  height: 540px;
+  margin: 0 auto;
+}
+
+.sf-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sf-wires path {
+  fill: none;
+  stroke: var(--sf-idle);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.3;
+}
+
+.sf-flow {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 10 14;
+  animation: sf-dash 0.8s linear infinite;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+.sf-flow.solar  { stroke: var(--sf-solar);   color: var(--sf-solar); }
+.sf-flow.battery { stroke: var(--sf-battery); color: var(--sf-battery); }
+.sf-flow.load   { stroke: var(--sf-load);    color: var(--sf-load); }
+
+@keyframes sf-dash { to { stroke-dashoffset: -48; } }
+
+/* ── Wire Pills ───────────────────────────────────── */
+.sf-wire-pill {
+  position: absolute;
+  z-index: 20;
+  background: white;
+  border: 1px solid var(--sf-line);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sf-ink-2);
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.sf-wire-pill.solar   { color: var(--sf-solar);   border-color: var(--sf-solar); }
+.sf-wire-pill.battery { color: var(--sf-battery); border-color: var(--sf-battery); }
+.sf-wire-pill.load    { color: var(--sf-load);    border-color: var(--sf-load); }
+.sf-wire-pill.grid    { color: var(--sf-ink-3); }
+
+/* ── Nodes ────────────────────────────────────────── */
+.sf-node-base {
+  position: absolute;
+  z-index: 10;
+  background: var(--sf-panel);
+  border: 1px solid var(--sf-line);
+  border-radius: 4px;
+  padding: 16px;
+  box-shadow: var(--sf-shadow);
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s, border-color 0.2s;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+.sf-node-base:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sf-shadow-lg);
+  border-color: currentColor;
+}
+
+.sf-inverter {
+  background: var(--sf-ink);
+  color: #f5f3ed;
+  border-radius: 12px;
+  padding: 18px;
+  border: none;
+}
+[data-theme='dark'] .sf-inverter { background: #f5f3ed; color: #14181a; }
+
+/* ── Sidebar Cards ────────────────────────────────── */
+.sf-card {
+  background: var(--sf-panel);
+  border: 1px solid var(--sf-line);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--sf-shadow);
+}
+
+/* ── Spinner (setup page submit button) ───────────── */
+.setup-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(245,243,237,0.3);
+  border-top-color: #f5f3ed;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Admin-form input font override ──────────────── */
+.admin-form input,
+.admin-form select,
+.admin-login-panel input {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+}
