@@ -484,6 +484,18 @@ function Node({ className = '', label, value, unit, sub, tag, glyph, onClick }: 
 
 // ── Mobile detection ───────────────────────────────────
 
+// Ticking clock so online/offline status stays live without new data arriving.
+// A shared cadence keeps Desktop and Mobile views in sync instead of each
+// freezing isOnline at its own render time.
+function useNow(intervalMs = 5000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(t);
+  }, [intervalMs]);
+  return now;
+}
+
 function useIsMobile() {
   // Start `false` on both server and first client render so hydration matches;
   // the real viewport width is applied right after mount.
@@ -510,6 +522,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const onMetric = (metric: string, label: string, unit: string, color: string) =>
     setActiveMetric({ metric, label, unit, color });
 
+  const now = useNow();
   const weather = useWeather();
   const chartData = useEnergyChart(deviceSn, selectedDate);
   const trendData = useTrendChart(deviceSn, trendPeriod);
@@ -530,7 +543,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const gridActive  = Math.abs(grid) > 10;
   const batteryState = battery < 0 ? 'Charging' : battery > 0 ? 'Discharging' : 'Standby';
   const lastSeen    = lastSeenAt ? new Date(lastSeenAt) : null;
-  const isOnline    = lastSeen ? (Date.now() - lastSeen.getTime() < 15_000) : false;
+  const isOnline    = lastSeen ? (now - lastSeen.getTime() < 15_000) : false;
   const homeEnergy  = n(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday);
   const importEnergy = n(metrics.importEnergyToday);
   const selfSufficiency = homeEnergy > 0 ? Math.max(0, Math.min(100, (1 - importEnergy / homeEnergy) * 100)) : 0;
@@ -765,6 +778,7 @@ interface PowerFlowProps {
 }
 
 function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved, themeSkin, onThemeSkinChange }: PowerFlowProps) {
+  const now = useNow();
   const weather = useWeather();
   const [hiddenSeries, setHiddenSeries] = useState(new Set<string>());
   const [hiddenTrendSeries, setHiddenTrendSeries] = useState(new Set<string>());
@@ -797,7 +811,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const batteryPowerSigned = `${battery < 0 ? '+' : battery > 0 ? '-' : ''}${(Math.abs(battery) / 1000).toFixed(2)} kW`;
 
   const lastSeen  = lastSeenAt ? new Date(lastSeenAt) : null;
-  const isOnline  = lastSeen ? (Date.now() - lastSeen.getTime() < 15_000) : false;
+  const isOnline  = lastSeen ? (now - lastSeen.getTime() < 15_000) : false;
   const lastTime  = lastSeen ? lastSeen.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
 
   const homeEnergy   = n(metrics.loadEnergyToday);
