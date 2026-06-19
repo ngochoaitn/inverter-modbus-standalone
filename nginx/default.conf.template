@@ -1,3 +1,6 @@
+# Token dài 64 ký tự -> cần tăng bucket size cho map hash
+map_hash_bucket_size 128;
+
 # Nếu cookie authtoken đã đúng token -> tắt basic auth ("off"), ngược lại bắt đăng nhập.
 map $cookie_authtoken $auth_required {
     "${AUTH_TOKEN}"  "off";
