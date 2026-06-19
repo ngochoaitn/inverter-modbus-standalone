@@ -1,0 +1,33 @@
+# Nếu cookie authtoken đã đúng token -> tắt basic auth ("off"), ngược lại bắt đăng nhập.
+map $cookie_authtoken $auth_required {
+    "${AUTH_TOKEN}"  "off";
+    default          "Khu vuc han che";
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    # Cho phép upload/log lớn nếu cần
+    client_max_body_size 20m;
+
+    location / {
+        auth_basic           $auth_required;
+        auth_basic_user_file /etc/nginx/.htpasswd;
+
+        # Sau khi đăng nhập thành công (phản hồi 2xx/3xx), set cookie sống ~10 năm.
+        # KHÔNG dùng "always" để cookie không bị set khi trả về 401 (sai mật khẩu).
+        add_header Set-Cookie "authtoken=${AUTH_TOKEN}; Max-Age=315360000; Path=/; HttpOnly; SameSite=Lax";
+
+        proxy_pass http://lux-local:3000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Hỗ trợ websocket (Next.js HMR / realtime)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

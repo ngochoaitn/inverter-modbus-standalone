@@ -2,18 +2,32 @@ services:
   lux-local:
     build: .
     container_name: lux-local
-    ports:
-      - "3000:3000"
     restart: unless-stopped
     volumes:
       - solar-db:/app/data
+    networks:
+      - web
+    # Không expose 3000 ra ngoài nữa: mọi truy cập đi qua nginx-auth
+
+  nginx-auth:
+    build: ./nginx
+    container_name: lux-local-auth
+    restart: unless-stopped
+    depends_on:
+      - lux-local
+    environment:
+      - AUTH_USER=${AUTH_USER}
+      - AUTH_PASS=${AUTH_PASS}
+      - AUTH_TOKEN=${AUTH_TOKEN}
+      # Chỉ thay ${AUTH_TOKEN} trong template, giữ nguyên các biến $host, $cookie_... của nginx
+      - NGINX_ENVSUBST_FILTER=AUTH_TOKEN
     networks:
       - web
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.lux_local.rule=Host(`lux-local.appweb.io.vn`)"
       - "traefik.http.routers.lux_local.entrypoints=web"
-      - "traefik.http.services.lux_local.loadbalancer.server.port=3000"
+      - "traefik.http.services.lux_local.loadbalancer.server.port=80"
       - "traefik.docker.network=web"
 
 volumes:
