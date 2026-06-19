@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { METRIC_CATALOG } from '@/lib/historyMetrics';
 
-// Whitelist of valid metric keys (from mapper.ts output) to prevent SQL injection
-const ALLOWED_METRICS = new Set([
-  'pvPower', 'pv1Power', 'pv2Power', 'pv1Voltage', 'pv2Voltage',
-  'batteryVoltage', 'batterySoc', 'batteryFlow', 'batteryChargePower', 'batteryDischargePower',
-  'gridVoltage', 'gridFlow', 'powerFromGrid', 'powerToGrid',
-  'loadPower',
-  'pvEnergyToday', 'importEnergyToday', 'exportEnergyToday',
+// Whitelist of valid metric keys to prevent SQL injection. The metric value is
+// also bound as a parameter, but this keeps the surface explicit. Derived from
+// the history-metric catalogue (the "Thêm chỉ số" picker) plus a few legacy keys.
+const ALLOWED_METRICS = new Set<string>([
+  ...METRIC_CATALOG.flatMap(g => g.items.map(it => it.key)),
+  // Legacy keys kept for backward compatibility with older callers.
   'batteryChargeToday', 'batteryDischargeToday', 'loadEnergyToday',
 ]);
 

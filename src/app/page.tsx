@@ -4,14 +4,30 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import PowerFlow from '@/components/PowerFlow';
+import ComingSoonDashboard from '@/components/ComingSoonDashboard';
+import { IMPLEMENTED_SKINS, type ThemeSkin } from '@/components/ThemeSwitcher';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
+
+const SKIN_KEY = 'solariot.themeSkin';
 
 export default function Dashboard() {
   const router = useRouter();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [themeSkin, setThemeSkin] = useState<ThemeSkin>('solar');
   const [latestData, setLatestData] = useState<any>(null);
   const esRef = useRef<EventSource | null>(null);
+
+  // Restore the saved skin on mount (client-only to avoid hydration mismatch).
+  useEffect(() => {
+    const saved = localStorage.getItem(SKIN_KEY) as ThemeSkin | null;
+    if (saved) setThemeSkin(saved);
+  }, []);
+
+  const handleSkinChange = (skin: ThemeSkin) => {
+    setThemeSkin(skin);
+    try { localStorage.setItem(SKIN_KEY, skin); } catch { /* ignore */ }
+  };
 
   const { data: setupData, mutate: mutateSetup } = useSWR('/api/setup', fetcher, { revalidateOnFocus: false });
 
@@ -45,17 +61,25 @@ export default function Dashboard() {
     mutateSetup();
   };
 
+  const skinImplemented = IMPLEMENTED_SKINS.includes(themeSkin);
+
   return (
     <div data-theme={theme} style={{ background: 'var(--sf-bg)', minHeight: '100vh' }}>
-      <PowerFlow
-        metrics={device?.metrics || {}}
-        config={setupData?.config || {}}
-        deviceSn={device?.deviceSn || setupData?.config?.deviceSn}
-        lastSeenAt={device?.lastSeenAt || null}
-        theme={theme}
-        onThemeToggle={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
-        onConfigSaved={handleConfigSaved}
-      />
+      {skinImplemented ? (
+        <PowerFlow
+          metrics={device?.metrics || {}}
+          config={setupData?.config || {}}
+          deviceSn={device?.deviceSn || setupData?.config?.deviceSn}
+          lastSeenAt={device?.lastSeenAt || null}
+          theme={theme}
+          onThemeToggle={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
+          onConfigSaved={handleConfigSaved}
+          themeSkin={themeSkin}
+          onThemeSkinChange={handleSkinChange}
+        />
+      ) : (
+        <ComingSoonDashboard themeSkin={themeSkin} onThemeSkinChange={handleSkinChange} />
+      )}
     </div>
   );
 }

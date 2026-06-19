@@ -9,6 +9,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import HistoricalGraph from './HistoricalGraph';
+import ThemeSwitcher, { type ThemeSkin } from './ThemeSwitcher';
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -484,11 +485,12 @@ function Node({ className = '', label, value, unit, sub, tag, glyph, onClick }: 
 // ── Mobile detection ───────────────────────────────────
 
 function useIsMobile() {
-  const [mobile, setMobile] = useState(
-    typeof window !== 'undefined' ? window.innerWidth <= 1334 : false,
-  );
+  // Start `false` on both server and first client render so hydration matches;
+  // the real viewport width is applied right after mount.
+  const [mobile, setMobile] = useState(false);
   useEffect(() => {
     const onResize = () => setMobile(window.innerWidth <= 1334);
+    onResize();
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -497,13 +499,18 @@ function useIsMobile() {
 
 // ── MobileFlow ─────────────────────────────────────────
 
-function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved }: PowerFlowProps) {
+function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved, themeSkin, onThemeSkinChange }: PowerFlowProps) {
   const [activeTab, setActiveTab]   = useState<'flow' | 'stats'>('flow');
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('month');
   const [hiddenTrend, setHiddenTrend] = useState(new Set<string>());
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [configOpen, setConfigOpen] = useState(false);
+  const [activeMetric, setActiveMetric] = useState<any>(null);
 
+  const onMetric = (metric: string, label: string, unit: string, color: string) =>
+    setActiveMetric({ metric, label, unit, color });
+
+  const weather = useWeather();
   const chartData = useEnergyChart(deviceSn, selectedDate);
   const trendData = useTrendChart(deviceSn, trendPeriod);
 
@@ -519,6 +526,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const inverterNet = invTotalIn - invTotalOut;
   const soc         = n(metrics.batterySoc);
   const isBatChg    = battery < -20;
+  const batteryActive = battery !== 0;
   const gridActive  = Math.abs(grid) > 10;
   const batteryState = battery < 0 ? 'Charging' : battery > 0 ? 'Discharging' : 'Standby';
   const lastSeen    = lastSeenAt ? new Date(lastSeenAt) : null;
@@ -532,13 +540,17 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
       {/* Header */}
       <div className="sfm-header">
         <div className="left">
-          <h2>LUX LOCAL</h2>
+          <h2>
+            <span className={`sf-status-dot${isOnline ? '' : ' offline'}`} style={{ marginRight: 8, display: 'inline-block' }} />
+            {'Lux Local'}
+          </h2>
           <div className="sub">
-            <span className={`dot${isOnline ? ' online' : ''}`} />
-            <span>{isOnline ? 'Online' : 'Offline'} · {deviceSn || '--'}</span>
+            {isOnline ? 'Online' : 'Offline'}
+            {config?.dongleSn ? ` · ${config.dongleSn}` : ''}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <ThemeSwitcher themeSkin={themeSkin} onThemeSkinChange={onThemeSkinChange} />
           <button className="sfm-circle-btn" onClick={onThemeToggle} title="Toggle theme">
             {theme === 'dark' ? '☀' : '◑'}
           </button>
@@ -550,94 +562,112 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
 
       {activeTab === 'flow' ? (
         <>
-          {/* Live flow card */}
-          <div className="sfm-card flow-card" style={{ margin: '0 12px 16px' }}>
+          {/* Weather strip */}
+          <div className="sf-weather-mini sfm-weather">
+            <WeatherGlyph code={weather?.code ?? 0} size={16} />
+            <div className="sf-wm-temp">
+              <div className="sf-wm-t">
+                {weather ? weather.tempMax : '--'}<span className="sf-wm-deg">°C</span>
+                <span className="sf-wm-min">/{weather ? weather.tempMin : '--'}°</span>
+              </div>
+            </div>
+            <div className="sf-wm-sep" />
+            <div className="sf-wm-stat"><span className="k">Sunset</span><span className="v">{weather?.sunset ?? '--:--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">UV</span><span className="v">{weather?.uv ?? '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">Irrad</span><span className="v">{weather ? `${weather.irr} kWh/m²` : '--'}</span></div>
+          </div>
+
+          {/* Main numbers */}
+          <section className="sfm-card main-card">
+            <div className="sfm-main-row">
+              <div className="sfm-main-pv" onClick={() => onMetric('pvPower', 'Công suất PV', 'W', '#38a34b')}>
+                <small>ĐANG SẢN XUẤT</small>
+                <strong className="solar-c">{(pv / 1000).toFixed(2)}<span>kW</span></strong>
+              </div>
+              <div className="sfm-main-sep" />
+              <div className="sfm-main-item" onClick={() => onMetric('loadPower', 'Tải tiêu thụ', 'W', '#d44728')}>
+                <small>TIÊU THỤ</small>
+                <strong className="load-c">{(load / 1000).toFixed(2)}<span>kW</span></strong>
+              </div>
+              <div className="sfm-main-item" onClick={() => onMetric('batteryFlow', 'Dòng pin (±)', 'W', '#c99318')}>
+                <small>PIN</small>
+                <strong className="battery-c">{(Math.abs(battery) / 1000).toFixed(2)}<span>kW</span></strong>
+              </div>
+            </div>
+          </section>
+
+          {/* Summary tiles */}
+          <section className="sfm-summary">
+            <div className="item" onClick={() => onMetric('pvEnergyToday', 'PV hôm nay', 'kWh', '#38a34b')}><span>MẶT TRỜI</span><strong className="solar-c">{fmt(metrics.pvEnergyToday, 1)}<small>kWh</small></strong></div>
+            <div className="item" onClick={() => onMetric('homeConsumptionEnergyToday', 'Tiêu thụ hôm nay', 'kWh', '#d44728')}><span>TIÊU THỤ</span><strong className="load-c">{fmt(metrics.loadEnergyToday, 1)}<small>kWh</small></strong></div>
+            <div className="item" onClick={() => onMetric('batterySoc', 'SOC pin', '%', '#c99318')}><span>PIN %</span><strong className="battery-c">{soc}</strong></div>
+            <div className="item" onClick={() => onMetric('importEnergyToday', 'Mua lưới hôm nay', 'kWh', '#7f858a')}><span>LƯỚI</span><strong className="idle-c">{fmt(metrics.importEnergyToday, 1)}<small>kWh</small></strong></div>
+          </section>
+
+          {/* Live flow card (cross layout) */}
+          <section className="sfm-card flow-card">
             <div className="head">
-              <span>LIVE FLOW</span>
+              <span>LUỒNG ĐIỆN</span>
               <small>
                 <span className={`dot${isOnline ? ' online' : ''}`} style={{ width: 6, height: 6 }} />
-                {isOnline ? 'Live' : 'Offline'}
+                THỜI GIAN THỰC
               </small>
             </div>
-            <div className="vflow">
-              {/* PV */}
-              <div className="vnode pv">
+            <div className="vflow2d">
+              <svg className="wires2d" viewBox="0 0 300 320" preserveAspectRatio="none">
+                {/* PV (top) → center */}
+                <path className={`wire ${pv > 0 ? 'solar' : 'idle'}`} d="M 150 43 L 150 160" />
+                {pv > 0 && <path className="flow solar" d="M 150 43 L 150 160" />}
+                {/* Battery (left) ↔ center */}
+                <path className={`wire ${batteryActive ? 'battery' : 'idle'}`} d="M 43 160 L 150 160" />
+                {batteryActive && <path className={`flow battery${battery < 0 ? ' reverse' : ''}`} d="M 43 160 L 150 160" />}
+                {/* center → Home (right) */}
+                <path className={`wire ${load > 0 ? 'load' : 'idle'}`} d="M 150 160 L 256 160" />
+                {load > 0 && <path className="flow load fast" d="M 150 160 L 256 160" />}
+                {/* center → Grid (bottom) */}
+                <path className={`wire ${gridActive ? 'grid' : 'idle'}`} d="M 150 160 L 150 277" />
+                {gridActive && <path className={`flow grid${grid < 0 ? ' reverse' : ''}`} d="M 150 160 L 150 277" />}
+                <circle cx="150" cy="160" r="3" fill="#fff" stroke="var(--sf-ink-3)" strokeWidth="1.2" />
+              </svg>
+
+              <div className="vnode v2 pv" onClick={() => onMetric('pvPower', 'Công suất PV', 'W', '#38a34b')}>
                 <div className="gly sun"><Sun size={14} color="#fff" /></div>
-                <div>
-                  <div className="name">Solar</div>
-                  <div className="val">{Math.round(pv)}<span className="u"> W</span></div>
-                </div>
-                <div className="right">
-                  PV1 {fmt(metrics.pv1Voltage, 1)}V<br />
-                  PV2 {fmt(metrics.pv2Voltage, 1)}V
-                </div>
+                <div className="name">Tổng PV</div>
+                <div className="val">{(pv / 1000).toFixed(2)}<span className="u">kW</span></div>
+                <div className="sub">2 MPPT</div>
               </div>
 
-              {/* Wire PV → Inverter */}
-              <div style={{ position: 'relative', height: 44 }}>
-                <svg width="100%" height="44" viewBox="0 0 300 44" preserveAspectRatio="none" style={{ display: 'block' }}>
-                  <line x1="150" y1="0" x2="150" y2="44" className={`wire ${pv > 0 ? 'solar' : 'idle'}`} />
-                  {pv > 0 && <line x1="150" y1="0" x2="150" y2="44" className="flow solar" />}
-                </svg>
-                <div className="conn solar" style={{ top: 12 }}>{(pv / 1000).toFixed(2)} kW</div>
+              <div className="vnode v2 bat" onClick={() => onMetric('batteryFlow', 'Dòng pin (±)', 'W', '#c99318')}>
+                <div className={`gly batg${isBatChg ? ' charging' : ''}`} style={{ '--soc': `${soc}%` } as any}>
+                  <div className="fill" />
+                </div>
+                <div className="name">Pin</div>
+                <div className="val" style={{ color: 'var(--sf-battery)' }}>{(-battery / 1000).toFixed(2)}<span className="u">kW</span></div>
+                <div className="sub">{soc}% · {batteryState === 'Charging' ? 'Đang sạc' : batteryState === 'Discharging' ? 'Đang xả' : 'Chờ'}</div>
               </div>
 
-              {/* Inverter */}
-              <div className="vnode inv">
-                <div className="gly invg"><Zap size={14} color="#fff" /></div>
-                <div>
-                  <div className="name">Inverter</div>
-                  <div className="val">{fmt(inverterNet)}<span className="u"> W</span></div>
-                </div>
-                <div className="right">
-                  <span className="badge">{metrics.inverterState || 'NORMAL'}</span>
-                </div>
+              <div className="vnode v2 inv" onClick={() => onMetric('loadPower', 'Công suất inverter', 'W', '#5ba4d4')}>
+                <div className="name">LUXPOWER</div>
+                <div className="val">{fmt(inverterNet)}<span className="u">W net</span></div>
+                <div className="pbar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
+                <div className="sub">DC {fmt(metrics.dcDcTemperature)}° · AC {fmt(metrics.inverterTemperature)}°</div>
               </div>
 
-              {/* Wire Inverter → 3-way split */}
-              <div style={{ position: 'relative', height: 60 }}>
-                <svg width="100%" height="60" viewBox="0 0 300 60" preserveAspectRatio="none" style={{ display: 'block' }}>
-                  <line x1="50" y1="0" x2="250" y2="0" className="wire idle" />
-                  <line x1="150" y1="0" x2="150" y2="4" className="wire idle" />
-                  <line x1="50" y1="0" x2="50" y2="60" className={`wire ${batteryState !== 'Standby' ? 'battery' : 'idle'}`} />
-                  <line x1="150" y1="0" x2="150" y2="60" className={`wire ${load > 0 ? 'load' : 'idle'}`} />
-                  <line x1="250" y1="0" x2="250" y2="60" className={`wire ${gridActive ? 'grid' : 'idle'}`} />
-                  {batteryState !== 'Standby' && <line x1="50" y1="0" x2="50" y2="60" className={`flow battery${battery < 0 ? ' reverse' : ''}`} />}
-                  {load > 0 && <line x1="150" y1="0" x2="150" y2="60" className="flow load" />}
-                  {gridActive && <line x1="250" y1="0" x2="250" y2="60" className={`flow grid${grid > 0 ? ' reverse' : ''}`} />}
-                </svg>
+              <div className="vnode v2 load" onClick={() => onMetric('loadPower', 'Tải tiêu thụ', 'W', '#d44728')}>
+                <div className="gly houseg" />
+                <div className="name">Nhà</div>
+                <div className="val" style={{ color: 'var(--sf-load)' }}>{(load / 1000).toFixed(2)}<span className="u">kW</span></div>
+                <div className="sub">Thiết yếu</div>
               </div>
 
-              {/* Bottom 3 nodes */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-                <div className="vnode bat" style={{ gridTemplateColumns: 'auto 1fr' }}>
-                  <div className="gly batg" style={{ '--soc': `${soc}%` } as any}>
-                    <div className={`fill${isBatChg ? ' charging' : ''}`} />
-                  </div>
-                  <div>
-                    <div className="name">Battery</div>
-                    <div className="val" style={{ fontSize: 14 }}>{soc}<span className="u">%</span></div>
-                    <div style={{ fontSize: 9, color: 'var(--sf-ink-3)' }}>{batteryState}</div>
-                  </div>
-                </div>
-                <div className="vnode load" style={{ gridTemplateColumns: 'auto 1fr' }}>
-                  <div className="gly houseg" />
-                  <div>
-                    <div className="name">Home</div>
-                    <div className="val" style={{ fontSize: 14 }}>{(load / 1000).toFixed(1)}<span className="u">kW</span></div>
-                  </div>
-                </div>
-                <div className="vnode gridn" style={{ gridTemplateColumns: 'auto 1fr' }}>
-                  <div className="gly towerg" />
-                  <div>
-                    <div className="name">Grid</div>
-                    <div className="val" style={{ fontSize: 14 }}>{(Math.abs(grid) / 1000).toFixed(1)}<span className="u">kW</span></div>
-                    <div style={{ fontSize: 9, color: 'var(--sf-ink-3)' }}>{grid > 0 ? 'Export' : grid < 0 ? 'Import' : 'Idle'}</div>
-                  </div>
-                </div>
+              <div className="vnode v2 gridn" onClick={() => onMetric('gridFlow', 'Lưới (±)', 'W', '#7f858a')}>
+                <div className="gly towerg" />
+                <div className="name">Lưới</div>
+                <div className="val" style={{ color: gridActive ? 'var(--sf-ink)' : 'var(--sf-ink-3)' }}>{Math.abs(Math.round(grid))}<span className="u">W</span></div>
+                <div className="sub">{fmt(metrics.gridVoltage, 1)}V · {fmt(metrics.gridFrequency, 2)}Hz</div>
               </div>
             </div>
-          </div>
+          </section>
 
           {/* Today chart */}
           <section className="sfm-chart-card">
@@ -712,6 +742,10 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
       {configOpen && (
         <ConfigModal config={config} onClose={() => setConfigOpen(false)} onSaved={() => { onConfigSaved(); setConfigOpen(false); }} />
       )}
+
+      {activeMetric && (
+        <MetricModal deviceSn={deviceSn} metric={activeMetric} onClose={() => setActiveMetric(null)} />
+      )}
     </div>
   );
 }
@@ -726,9 +760,11 @@ interface PowerFlowProps {
   theme: 'light' | 'dark';
   onThemeToggle: () => void;
   onConfigSaved: () => void;
+  themeSkin: ThemeSkin;
+  onThemeSkinChange: (skin: ThemeSkin) => void;
 }
 
-function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved }: PowerFlowProps) {
+function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved, themeSkin, onThemeSkinChange }: PowerFlowProps) {
   const weather = useWeather();
   const [hiddenSeries, setHiddenSeries] = useState(new Set<string>());
   const [hiddenTrendSeries, setHiddenTrendSeries] = useState(new Set<string>());
@@ -796,6 +832,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             <h1 className="sf-stage-title">POWER FLOW</h1>
           </div>
           <div className="sf-topbar-actions">
+            <ThemeSwitcher themeSkin={themeSkin} onThemeSkinChange={onThemeSkinChange} />
             <button className="sf-btn sf-theme-btn" onClick={onThemeToggle}>
               {theme === 'dark' ? (
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" stroke="none"><path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a1 1 0 0 0-1.3-1.3A7 7 0 1 0 14.3 10.8 1 1 0 0 0 13 9.5Z"/></svg>
