@@ -7,6 +7,17 @@ services:
     restart: unless-stopped
     volumes:
       - solar-db:/app/data
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lux_local.rule=Host(`lux-local.appweb.io.vn`)"
+      - "traefik.http.routers.lux_local.entrypoints=web"
+      - "traefik.http.services.lux_local.loadbalancer.server.port=3000"
+      - "traefik.docker.network=web"
 
 volumes:
   solar-db:
+networks:
+  web:
+    external: true
