@@ -28,6 +28,17 @@ function fmt(value: any, digits = 0) {
   return digits > 0 ? num.toFixed(digits) : Math.round(num).toString();
 }
 
+// Only surface temperature sensors the inverter actually reports — some models
+// leave internal/battery registers empty, so we hide whatever has no reading.
+function tempReadings(metrics: any, t: (k: string) => string) {
+  return [
+    { key: 'internal', label: t('node.tempInner'),     v: metrics.internalTemperature },
+    { key: 'rad1',     label: t('node.tempRadiator'),  v: metrics.radiator1Temperature },
+    { key: 'bat',      label: t('node.tempBattery'),   v: metrics.batteryTemperature },
+    { key: 'rad2',     label: t('node.tempRadiator2'), v: metrics.radiator2Temperature },
+  ].filter(x => x.v != null && Number.isFinite(Number(x.v)));
+}
+
 const dateStr = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
@@ -562,10 +573,10 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
       {/* Header */}
       <div className="sfm-header">
         <div className="left">
-          <h2>
+          <h3>
             <span className={`sf-status-dot${isOnline ? '' : ' offline'}`} style={{ marginRight: 8, display: 'inline-block' }} />
             {'Lux Local'}
-          </h2>
+          </h3>
           <div className="sub">
             {isOnline ? t('status.online') : t('status.offline')}
             {config?.dongleSn ? ` · ${config.dongleSn}` : ''}
@@ -674,7 +685,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 <div className="name">LUXPOWER</div>
                 <div className="val">{pw(inverterNet).value}<span className="u">{pw(inverterNet).unit} net</span></div>
                 <div className="pbar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
-                <div className="sub">DC {fmt(metrics.dcDcTemperature)}° · AC {fmt(metrics.inverterTemperature)}°</div>
+                <div className="sub">{tempReadings(metrics, t).slice(0, 2).map(x => `${x.label} ${fmt(x.v)}°`).join(' · ')}</div>
               </div>
 
               <div className="vnode v2 load" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
@@ -980,8 +991,9 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
               <div className="iv-power">{pw(inverterNet).value}<small>{pw(inverterNet).unit}</small></div>
               <div className="iv-bar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
               <div className="iv-meta">
-                <span><b>DC</b> {fmt(metrics.dcDcTemperature)}°C</span>
-                <span><b>AC</b> {fmt(metrics.inverterTemperature)}°C</span>
+                {tempReadings(metrics, t).map(x => (
+                  <span key={x.key}><b>{x.label}</b> {fmt(x.v)}°C</span>
+                ))}
               </div>
             </div>
 

@@ -18,7 +18,7 @@ export default function PowerUnitSwitcher({ variant = 'btn' }: { variant?: 'btn'
       className={variant === 'circle' ? 'sfm-circle-btn' : 'sf-btn'}
       onClick={cycle}
       title={t('powerUnit.title')}
-      style={{ fontSize: variant === 'circle' ? 12 : undefined, fontWeight: 600 }}
+      style={{ fontWeight: 600 }}
     >
       {label}
     </button>

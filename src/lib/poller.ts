@@ -55,6 +55,15 @@ async function pollFast(config: DeviceConfig) {
     const b3 = await session.readInputRegisters(dongleSn, deviceSn, 170, 2);
     for (let i = 0; i < b3.length; i++) fastInput[String(170 + i)] = b3[i];
 
+    // Block 3b: regs 64–67 — temperatures (internal, radiator 1/2, battery).
+    // Wrapped so a temperature read failure never aborts the whole poll cycle.
+    try {
+      const bTemp = await session.readInputRegisters(dongleSn, deviceSn, 64, 4);
+      for (let i = 0; i < bTemp.length; i++) fastInput[String(64 + i)] = bTemp[i];
+    } catch (err: any) {
+      console.warn('[Poller] temperature read failed (regs 64-67):', err?.message ?? err);
+    }
+
     // Block 4: regs 217–220 — PV4-6 strings (optional on single/dual-string models)
     try {
       const b4 = await session.readInputRegisters(dongleSn, deviceSn, 217, 4);
@@ -85,7 +94,12 @@ async function pollFast(config: DeviceConfig) {
     lastHistorySave = Date.now();
   }
 
-  console.log(`[Poller] OK — ${deviceSn} SOC=${mapped.batterySoc}% PV=${mapped.pvPower}W load=${mapped.loadPower}W`);
+  const s = inputSnapshot;
+  console.log(
+    `[Poller] OK — ${deviceSn} SOC=${mapped.batterySoc}% PV=${mapped.pvPower}W load=${mapped.loadPower}W ` +
+    `temp(in/rad/bat)=${mapped.internalTemperature ?? '--'}/${mapped.radiator1Temperature ?? '--'}/${mapped.batteryTemperature ?? '--'}°C ` +
+    `[raw r64=${s['64']} r214=${s['214'] ?? '∅'} r66=${s['66']} r67=${s['67']} r103=${s['103'] ?? '∅'} r104=${s['104'] ?? '∅'}]`,
+  );
 }
 
 async function pollSlow(config: DeviceConfig) {
@@ -96,6 +110,24 @@ async function pollSlow(config: DeviceConfig) {
     // regs 28–37 — energy-today counters (PV/battery/grid kWh accumulators)
     const b = await session.readInputRegisters(dongleSn, deviceSn, 28, 10);
     for (let i = 0; i < b.length; i++) inputSnapshot[String(28 + i)] = b[i];
+
+    // regs 101–104 — BMS max/min cell voltage & temperature.
+    // reg 103/104 give the real battery temperature on models that leave reg 67 at 0.
+    try {
+      const bms = await session.readInputRegisters(dongleSn, deviceSn, 101, 4);
+      for (let i = 0; i < bms.length; i++) inputSnapshot[String(101 + i)] = bms[i];
+    } catch {
+      // Non-fatal: no BMS / unsupported
+    }
+
+    // regs 214–216 — NTC temperatures (internal INDC, radiator DCDC L/H).
+    // V23+ firmware only; used as the internal-temp fallback when reg 64 is 0.
+    try {
+      const ntc = await session.readInputRegisters(dongleSn, deviceSn, 214, 3);
+      for (let i = 0; i < ntc.length; i++) inputSnapshot[String(214 + i)] = ntc[i];
+    } catch {
+      // Non-fatal: older firmware without NTC temperature registers
+    }
   } finally {
     session.close();
   }

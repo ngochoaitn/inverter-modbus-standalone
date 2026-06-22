@@ -1,3 +1,4 @@
+// Tham khảo thêm tại: https://github.com/ant0nkr/luxpower-ha-integration/blob/main/custom_components/lxp_modbus/constants/input_registers.py
 
 export type RegisterType = 'input' | 'hold';
 
@@ -48,6 +49,25 @@ export function mapLuxpower(registers: Registers) {
 
   const status = raw(r, 'input', 0) ?? 0;
 
+  // Temperatures are plain °C and can read sub-zero, so interpret as signed.
+  // Missing registers stay undefined so the UI shows "--" instead of a fake 0°C.
+  const temp = (addr: number) => {
+    const v = raw(r, 'input', addr);
+    return v == null ? undefined : signed16(v);
+  };
+  // Some models leave a sensor register at 0 when it isn't wired (e.g. internal
+  // temp while the radiator clearly reads hot). Treat a flat 0 as "no reading"
+  // so a fallback register can take over instead of showing a fake 0°C.
+  const tempNz = (addr: number) => {
+    const v = temp(addr);
+    return v ? v : undefined;
+  };
+  // BMS cell temperature (reg 103/104) is reported in 0.1 °C, signed.
+  const bmsTemp = (addr: number) => {
+    const v = raw(r, 'input', addr);
+    return v == null ? undefined : signed16(v) * 0.1;
+  };
+
   return {
     inverterState: stateText[status] ?? `Unknown (${status})`,
 
@@ -77,6 +97,15 @@ export function mapLuxpower(registers: Registers) {
     // Load & EPS
     loadPower: raw(r, 'input', 170) ?? 0,
     epsPower:  raw(r, 'input', 24) ?? 0,
+
+    // Temperatures (°C) — see Luxpower input registers.
+    // Internal: TINNER (64), falling back to NTC-for-INDC (214) when unwired.
+    internalTemperature:  tempNz(64) ?? tempNz(214),
+    radiator1Temperature: temp(65),   // I_TRADIATOR1
+    radiator2Temperature: tempNz(66), // I_TRADIATOR2
+    // Battery: TBAT (67), falling back to BMS max cell temp (103) — most models
+    // report battery temperature through the BMS rather than reg 67.
+    batteryTemperature:   tempNz(67) ?? bmsTemp(103),
 
     // Energy today (all × 0.1 kWh)
     pvEnergyToday:               ((raw(r, 'input', 28) ?? 0) + (raw(r, 'input', 29) ?? 0) + (raw(r, 'input', 30) ?? 0)) * 0.1,

@@ -2946,7 +2946,8 @@ body:has(.dashboard) {
 .iv-meta {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid rgba(245, 243, 237, 0.16);
@@ -3324,20 +3325,39 @@ body:has(.dashboard) {
     flex-shrink: 0;
   }
 
-  /* Header action cluster — keep all controls uniform, round and tight. */
+  /* Header action cluster — one segmented "pill" with ghost buttons inside,
+     instead of separate bordered circles. Cleaner and more compact. */
   .sfm-actions {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 2px;
+    padding: 3px;
+    background: var(--sf-panel);
+    border: 1px solid var(--sf-line);
+    border-radius: 999px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   }
   .sfm-actions .sfm-circle-btn,
   .sfm-actions .tsw-btn {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
+    border: none;
     border-radius: 50%;
-    font-size: 14px;
+    background: transparent;
     box-shadow: none;
+    color: var(--sf-ink-2);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
     flex-shrink: 0;
+    transition: background .15s ease, color .15s ease;
+  }
+  .sfm-actions .sfm-circle-btn:hover,
+  .sfm-actions .sfm-circle-btn:active,
+  .sfm-actions .tsw-btn:hover,
+  .sfm-actions .tsw-btn:active {
+    background: var(--sf-line);
+    color: var(--sf-ink);
   }
 
   .sfm-card {

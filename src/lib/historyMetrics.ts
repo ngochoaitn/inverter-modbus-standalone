@@ -71,9 +71,7 @@ export const METRIC_CATALOG: MetricGroup[] = [
     items: [
       { key: 'internalTemperature', label: 'Nhiệt độ trong', unit: '°C' },
       { key: 'radiator1Temperature', label: 'Tản nhiệt 1', unit: '°C' },
-      { key: 'inverterTemperature', label: 'Nhiệt độ inverter', unit: '°C' },
-      { key: 'dcAcTemperature', label: 'Nhiệt độ DC-AC', unit: '°C' },
-      { key: 'dcDcTemperature', label: 'Nhiệt độ DC-DC', unit: '°C' },
+      { key: 'radiator2Temperature', label: 'Tản nhiệt 2', unit: '°C' },
     ],
   },
   {
