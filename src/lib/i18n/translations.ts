@@ -58,7 +58,6 @@ const vi: Dict = {
   node: {
     totalPv: 'Tổng PV',
     pvTotal: 'Tổng PV',
-    twoMppt: '2 MPPT',
     battery: 'Pin',
     batteryBank: 'Cụm pin',
     home: 'Nhà',
@@ -73,8 +72,8 @@ const vi: Dict = {
     dc: 'DC',
     pvString: 'Chuỗi PV {n}',
     tempInner: 'Trong',
-    tempRadiator: 'Tản nhiệt',
-    tempRadiator2: 'Tản nhiệt 2',
+    tempRadiator: 'Tản ',
+    tempRadiator2: 'Tản  2',
     tempBattery: 'Pin',
   },
   state: { charging: 'Đang sạc', discharging: 'Đang xả', standby: 'Chờ' },
@@ -286,7 +285,6 @@ const en: Dict = {
   node: {
     totalPv: 'Total PV',
     pvTotal: 'PV Total',
-    twoMppt: '2 MPPT',
     battery: 'Battery',
     batteryBank: 'Battery Bank',
     home: 'Home',

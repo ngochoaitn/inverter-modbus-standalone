@@ -32,10 +32,10 @@ function fmt(value: any, digits = 0) {
 // leave internal/battery registers empty, so we hide whatever has no reading.
 function tempReadings(metrics: any, t: (k: string) => string) {
   return [
-    { key: 'internal', label: t('node.tempInner'),     v: metrics.internalTemperature },
-    { key: 'rad1',     label: t('node.tempRadiator'),  v: metrics.radiator1Temperature },
-    { key: 'bat',      label: t('node.tempBattery'),   v: metrics.batteryTemperature },
-    { key: 'rad2',     label: t('node.tempRadiator2'), v: metrics.radiator2Temperature },
+    { key: 'internal', label: t('node.tempInner').trim(),     v: metrics.internalTemperature },
+    { key: 'rad1',     label: t('node.tempRadiator').trim(),  v: metrics.radiator1Temperature },
+    { key: 'rad2',     label: t('node.tempRadiator2').trim(), v: metrics.radiator2Temperature },
+    { key: 'bat',      label: t('node.tempBattery').trim(),   v: metrics.batteryTemperature },
   ].filter(x => x.v != null && Number.isFinite(Number(x.v)));
 }
 
@@ -560,6 +560,25 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const soc         = n(metrics.batterySoc);
   const isBatChg    = battery < -20;
   const batteryActive = battery !== 0;
+
+  // PV strings present on this inverter (power or voltage seen). With 2+ strings
+  // we list each string's power; with 0–1 we just show the MPPT count.
+  const pvStrings = [1, 2, 3]
+    .map(i => ({ i, power: n(metrics[`pv${i}Power`]), voltage: n(metrics[`pv${i}Voltage`]) }))
+    .filter(s => s.power > 0 || s.voltage > 0);
+  const pvSub = pvStrings.length >= 2
+    ? pvStrings.map(s => `${pw(s.power).value}${pw(s.power).unit}`).join(' + ')
+    : '1 MPPT';
+
+  // Compact temperature summary for the inverter node: the two radiator sensors
+  // share one label ("Tản: 52°, 46°"); internal/battery are shown individually.
+  const temps = tempReadings(metrics, t);
+  const radValues = temps.filter(x => x.key === 'rad1' || x.key === 'rad2').map(x => `${fmt(x.v)}°`);
+  const tempSub = [
+    ...temps.filter(x => x.key === 'internal').map(x => `${x.label} ${fmt(x.v)}°`),
+    ...(radValues.length ? [`${t('node.tempRadiator').trim()}: ${radValues.join(', ')}`] : []),
+    ...temps.filter(x => x.key === 'bat').map(x => `${x.label} ${fmt(x.v)}°`),
+  ].join(' ');
   const gridActive  = Math.abs(grid) > 10;
   const batteryState = battery < 0 ? 'Charging' : battery > 0 ? 'Discharging' : 'Standby';
   const lastSeen    = lastSeenAt ? new Date(lastSeenAt) : null;
@@ -669,7 +688,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 <div className="gly sun"><Sun size={14} color="#fff" /></div>
                 <div className="name">{t('node.totalPv')}</div>
                 <div className="val">{pw(pv).value}<span className="u">{pw(pv).unit}</span></div>
-                <div className="sub">{t('node.twoMppt')}</div>
+                <div className="sub">{pvSub}</div>
               </div>
 
               <div className="vnode v2 bat" onClick={() => onMetric('batteryFlow', 'W', '#c99318')}>
@@ -685,7 +704,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 <div className="name">LUXPOWER</div>
                 <div className="val">{pw(inverterNet).value}<span className="u">{pw(inverterNet).unit} net</span></div>
                 <div className="pbar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
-                <div className="sub">{tempReadings(metrics, t).slice(0, 2).map(x => `${x.label} ${fmt(x.v)}°`).join(' · ')}</div>
+                <div className="sub">{tempSub}</div>
               </div>
 
               <div className="vnode v2 load" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
