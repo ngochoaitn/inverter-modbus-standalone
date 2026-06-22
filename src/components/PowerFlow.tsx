@@ -11,7 +11,9 @@ import {
 import HistoricalGraph from './HistoricalGraph';
 import ThemeSwitcher, { type ThemeSkin } from './ThemeSwitcher';
 import LanguageSwitcher from './LanguageSwitcher';
+import PowerUnitSwitcher from './PowerUnitSwitcher';
 import { useT } from '@/lib/i18n/I18nProvider';
+import { usePowerUnit } from '@/lib/prefs/PowerUnitProvider';
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -518,6 +520,7 @@ function useIsMobile() {
 
 function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved, themeSkin, onThemeSkinChange }: PowerFlowProps) {
   const t = useT();
+  const { pw } = usePowerUnit();
   const [activeTab, setActiveTab]   = useState<'flow' | 'stats'>('flow');
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('month');
   const [hiddenTrend, setHiddenTrend] = useState(new Set<string>());
@@ -569,6 +572,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
           </div>
         </div>
         <div className="sfm-actions">
+          <PowerUnitSwitcher variant="circle" />
           <LanguageSwitcher variant="circle" />
           <ThemeSwitcher themeSkin={themeSkin} onThemeSkinChange={onThemeSkinChange} />
           <button className="sfm-circle-btn" onClick={onThemeToggle} title={t('common.toggleTheme')}>
@@ -602,16 +606,16 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
             <div className="sfm-main-row">
               <div className="sfm-main-pv" onClick={() => onMetric('pvPower', 'W', '#38a34b')}>
                 <small>{t('mobile.producing')}</small>
-                <strong className="solar-c">{(pv / 1000).toFixed(2)}<span>kW</span></strong>
+                <strong className="solar-c">{pw(pv).value}<span>{pw(pv).unit}</span></strong>
               </div>
               <div className="sfm-main-sep" />
               <div className="sfm-main-item" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
                 <small>{t('mobile.consume')}</small>
-                <strong className="load-c">{(load / 1000).toFixed(2)}<span>kW</span></strong>
+                <strong className="load-c">{pw(load).value}<span>{pw(load).unit}</span></strong>
               </div>
               <div className="sfm-main-item" onClick={() => onMetric('batteryFlow', 'W', '#c99318')}>
                 <small>{t('mobile.battery')}</small>
-                <strong className="battery-c">{(Math.abs(battery) / 1000).toFixed(2)}<span>kW</span></strong>
+                <strong className="battery-c">{pw(Math.abs(battery)).value}<span>{pw(Math.abs(battery)).unit}</span></strong>
               </div>
             </div>
           </section>
@@ -653,7 +657,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
               <div className="vnode v2 pv" onClick={() => onMetric('pvPower', 'W', '#38a34b')}>
                 <div className="gly sun"><Sun size={14} color="#fff" /></div>
                 <div className="name">{t('node.totalPv')}</div>
-                <div className="val">{(pv / 1000).toFixed(2)}<span className="u">kW</span></div>
+                <div className="val">{pw(pv).value}<span className="u">{pw(pv).unit}</span></div>
                 <div className="sub">{t('node.twoMppt')}</div>
               </div>
 
@@ -662,13 +666,13 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                   <div className="fill" />
                 </div>
                 <div className="name">{t('node.battery')}</div>
-                <div className="val" style={{ color: 'var(--sf-battery)' }}>{(-battery / 1000).toFixed(2)}<span className="u">kW</span></div>
+                <div className="val" style={{ color: 'var(--sf-battery)' }}>{pw(-battery).value}<span className="u">{pw(-battery).unit}</span></div>
                 <div className="sub">{soc}% · {batteryState === 'Charging' ? t('state.charging') : batteryState === 'Discharging' ? t('state.discharging') : t('state.standby')}</div>
               </div>
 
               <div className="vnode v2 inv" onClick={() => onMetric('inverterPower', 'W', '#5ba4d4')}>
                 <div className="name">LUXPOWER</div>
-                <div className="val">{fmt(inverterNet)}<span className="u">W net</span></div>
+                <div className="val">{pw(inverterNet).value}<span className="u">{pw(inverterNet).unit} net</span></div>
                 <div className="pbar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
                 <div className="sub">DC {fmt(metrics.dcDcTemperature)}° · AC {fmt(metrics.inverterTemperature)}°</div>
               </div>
@@ -676,14 +680,14 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
               <div className="vnode v2 load" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
                 <div className="gly houseg" />
                 <div className="name">{t('node.home')}</div>
-                <div className="val" style={{ color: 'var(--sf-load)' }}>{(load / 1000).toFixed(2)}<span className="u">kW</span></div>
+                <div className="val" style={{ color: 'var(--sf-load)' }}>{pw(load).value}<span className="u">{pw(load).unit}</span></div>
                 <div className="sub">{t('node.essential')}</div>
               </div>
 
               <div className="vnode v2 gridn" onClick={() => onMetric('gridFlow', 'W', '#7f858a')}>
                 <div className="gly towerg" />
                 <div className="name">{t('node.grid')}</div>
-                <div className="val" style={{ color: gridActive ? 'var(--sf-ink)' : 'var(--sf-ink-3)' }}>{Math.abs(Math.round(grid))}<span className="u">W</span></div>
+                <div className="val" style={{ color: gridActive ? 'var(--sf-ink)' : 'var(--sf-ink-3)' }}>{pw(Math.abs(grid)).value}<span className="u">{pw(Math.abs(grid)).unit}</span></div>
                 <div className="sub">{fmt(metrics.gridVoltage, 1)}V · {fmt(metrics.gridFrequency, 2)}Hz</div>
               </div>
             </div>
@@ -786,6 +790,7 @@ interface PowerFlowProps {
 
 function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved, themeSkin, onThemeSkinChange }: PowerFlowProps) {
   const t = useT();
+  const { pw } = usePowerUnit();
   const now = useNow();
   const weather = useWeather();
   const [hiddenSeries, setHiddenSeries] = useState(new Set<string>());
@@ -816,7 +821,8 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
 
   const isBatChg = battery < -20;
   const batteryStateLabel = battery < 0 ? t('state.charging') : battery > 0 ? t('state.discharging') : t('state.standby');
-  const batteryPowerSigned = `${battery < 0 ? '+' : battery > 0 ? '-' : ''}${(Math.abs(battery) / 1000).toFixed(2)} kW`;
+  const batteryAbsFmt = pw(Math.abs(battery));
+  const batteryPowerSigned = `${battery < 0 ? '+' : battery > 0 ? '-' : ''}${batteryAbsFmt.value} ${batteryAbsFmt.unit}`;
 
   const lastSeen  = lastSeenAt ? new Date(lastSeenAt) : null;
   const isOnline  = lastSeen ? (now - lastSeen.getTime() < 15_000) : false;
@@ -854,6 +860,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             <h1 className="sf-stage-title">{t('title.powerFlow')}</h1>
           </div>
           <div className="sf-topbar-actions">
+            <PowerUnitSwitcher />
             <LanguageSwitcher />
             <ThemeSwitcher themeSkin={themeSkin} onThemeSkinChange={onThemeSkinChange} />
             <button className="sf-btn sf-theme-btn" onClick={onThemeToggle}>
@@ -924,10 +931,10 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
               <circle className="sf-junction idle"  cx="600" cy="360" r="4" />
             </svg>
 
-            <div className="sf-wire-label pv-main"><span className="arr">→</span>{(pv / 1000).toFixed(2)} kW</div>
+            <div className="sf-wire-label pv-main"><span className="arr">→</span>{pw(pv).value} {pw(pv).unit}</div>
             <div className="sf-wire-label battery-main"><span className="arr">{battery < 0 ? '←' : '→'}</span>{batteryPowerSigned} · {batteryStateLabel.toLowerCase()}</div>
-            <div className="sf-wire-label load-main"><span className="arr">→</span>{(load / 1000).toFixed(2)} kW</div>
-            <div className="sf-wire-label grid-main"><span className="arr">◦</span>{gridActive ? `${Math.abs(Math.round(grid))} W` : `0 W ${t('node.idleLower')}`}</div>
+            <div className="sf-wire-label load-main"><span className="arr">→</span>{pw(load).value} {pw(load).unit}</div>
+            <div className="sf-wire-label grid-main"><span className="arr">◦</span>{gridActive ? `${pw(Math.abs(grid)).value} ${pw(Math.abs(grid)).unit}` : `${pw(0).value} ${pw(0).unit} ${t('node.idleLower')}`}</div>
 
             {/* PV Strings */}
             <div className="sf-pv-string-row">
@@ -948,7 +955,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                       <span className="sf-tag">MPPT {i}</span>
                     </div>
                     <div className="sf-pv-val-row">
-                      <strong className="mono">{(power / 1000).toFixed(2)}<small className="unit"> kW</small></strong>
+                      <strong className="mono">{pw(power).value}<small className="unit"> {pw(power).unit}</small></strong>
                     </div>
                     <small className="sf-sub mono">{voltage.toFixed(1)} V · {current.toFixed(2)} A</small>
                   </button>
@@ -959,8 +966,8 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             <Node
               className="solar"
               label={t('node.pvTotal')}
-              value={Math.round(pv)}
-              unit=" W"
+              value={pw(pv).value}
+              unit={` ${pw(pv).unit}`}
               tag={t('node.dc')}
               sub={pv > 0 ? '' : t('node.noSolar')}
               glyph="sun"
@@ -970,7 +977,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             <div className="sf-inverter" onClick={() => onMetric('inverterPower', 'W', '#5ba4d4')} role="button" tabIndex={0}>
               <div className="iv-label">{t('node.inverterHybrid')}</div>
               <div className="iv-name">LUXPOWER</div>
-              <div className="iv-power">{fmt(inverterNet)}<small>W</small></div>
+              <div className="iv-power">{pw(inverterNet).value}<small>{pw(inverterNet).unit}</small></div>
               <div className="iv-bar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
               <div className="iv-meta">
                 <span><b>DC</b> {fmt(metrics.dcDcTemperature)}°C</span>
@@ -1001,8 +1008,8 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             <Node
               className="load"
               label={t('node.homeLoad')}
-              value={(load / 1000).toFixed(2)}
-              unit=" kW"
+              value={pw(load).value}
+              unit={` ${pw(load).unit}`}
               tag={t('node.essential')}
               sub={load > 0 ? '' : t('node.idle')}
               glyph="house"
@@ -1018,7 +1025,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                 <span className={`sf-tag${gridActive ? ' online' : ''}`}>{gridActive ? t('node.active') : t('node.idle')}</span>
               </div>
               <div className="sf-grid-main">
-                <div className="sf-value mono">{Math.abs(Math.round(grid))}<small className="unit"> W</small></div>
+                <div className="sf-value mono">{pw(Math.abs(grid)).value}<small className="unit"> {pw(Math.abs(grid)).unit}</small></div>
                 <div className="sf-sub">{grid > 0 ? t('grid.exporting') : grid < 0 ? t('grid.importing') : t('grid.idle')}</div>
               </div>
               <div className="sf-grid-meta">
@@ -1055,7 +1062,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                   <div className="t-lab">{t('tiles.production')}</div>
                   <Sun size={14} className="t-ico" style={{ color: 'var(--sf-solar)' }} />
                 </div>
-                <div className="t-val mono">{(pv / 1000).toFixed(2)}<span className="unit">kW</span></div>
+                <div className="t-val mono">{pw(pv).value}<span className="unit">{pw(pv).unit}</span></div>
                 <div className="t-bar"><div className="fill" style={{ width: `${Math.min(100, pv / 80)}%`, background: 'var(--sf-solar)' }} /></div>
               </div>
               <div className="sf-tile" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
@@ -1063,7 +1070,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                   <div className="t-lab">{t('tiles.consumption')}</div>
                   <Home size={14} className="t-ico" style={{ color: 'var(--sf-load)' }} />
                 </div>
-                <div className="t-val mono">{(load / 1000).toFixed(2)}<span className="unit">kW</span></div>
+                <div className="t-val mono">{pw(load).value}<span className="unit">{pw(load).unit}</span></div>
                 <div className="t-bar"><div className="fill" style={{ width: `${Math.min(100, load / 60)}%`, background: 'var(--sf-load)' }} /></div>
               </div>
               <div className="sf-tile" onClick={() => onMetric('batteryFlow', 'W', '#c99318')}>
@@ -1071,7 +1078,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                   <div className="t-lab">{t('tiles.toBattery')}</div>
                   <BatteryCharging size={14} className="t-ico" style={{ color: 'var(--sf-battery)' }} />
                 </div>
-                <div className="t-val mono">{(Math.max(0, -battery) / 1000).toFixed(2)}<span className="unit">kW</span></div>
+                <div className="t-val mono">{pw(Math.max(0, -battery)).value}<span className="unit">{pw(Math.max(0, -battery)).unit}</span></div>
                 <div className="t-bar"><div className="fill" style={{ width: `${Math.min(100, Math.max(0, -battery) / 50)}%`, background: 'var(--sf-battery)' }} /></div>
               </div>
               <div className="sf-tile" onClick={() => onMetric('gridFlow', 'W', '#7f858a')}>
@@ -1080,7 +1087,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                   <Zap size={14} className="t-ico" style={{ color: grid === 0 ? 'var(--sf-ink-3)' : 'var(--sf-idle)' }} />
                 </div>
                 <div className="t-val mono" style={{ color: grid === 0 ? 'var(--sf-ink-3)' : 'inherit' }}>
-                  {Math.abs(Math.round(grid))}<span className="unit">{Math.abs(grid) < 1000 ? 'W' : 'kW'}</span>
+                  {pw(Math.abs(grid)).value}<span className="unit">{pw(Math.abs(grid)).unit}</span>
                 </div>
                 <div className="t-bar"><div className="fill" style={{ width: `${Math.min(100, Math.abs(grid) / 50)}%` }} /></div>
               </div>
@@ -1143,10 +1150,10 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
           </div>
           <div className="sf-now-strip">
             {[
-              { key: 'solar',   color: 'var(--sf-solar)',   label: t('chart.solar'),   val: `${(pv / 1000).toFixed(2)} kW` },
-              { key: 'battery', color: 'var(--sf-battery)', label: t('chart.battery'), val: `${(battery / -1000).toFixed(2)} kW` },
-              { key: 'load',    color: 'var(--sf-load)',    label: t('chart.home'),    val: `${(load / 1000).toFixed(2)} kW` },
-              { key: 'grid',    color: 'var(--sf-idle)',    label: t('chart.grid'),    val: `${Math.abs(Math.round(grid))} W` },
+              { key: 'solar',   color: 'var(--sf-solar)',   label: t('chart.solar'),   val: `${pw(pv).value} ${pw(pv).unit}` },
+              { key: 'battery', color: 'var(--sf-battery)', label: t('chart.battery'), val: `${pw(-battery).value} ${pw(-battery).unit}` },
+              { key: 'load',    color: 'var(--sf-load)',    label: t('chart.home'),    val: `${pw(load).value} ${pw(load).unit}` },
+              { key: 'grid',    color: 'var(--sf-idle)',    label: t('chart.grid'),    val: `${pw(Math.abs(grid)).value} ${pw(Math.abs(grid)).unit}` },
               { key: 'soc',     color: '#06b6d4',           label: t('chart.soc'),     val: `${n(metrics.batterySoc)}%` },
             ].map(item => (
               <div
@@ -1196,10 +1203,10 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
           </div>
           <div className="sf-now-strip" style={{ marginTop: 8 }}>
             {[
-              { key: 'solar',   color: 'var(--sf-solar)',   label: t('chart.solar'),   val: `${(pv / 1000).toFixed(2)} kW` },
-              { key: 'battery', color: 'var(--sf-battery)', label: t('chart.battery'), val: `${(battery / -1000).toFixed(2)} kW` },
-              { key: 'load',    color: 'var(--sf-load)',    label: t('chart.home'),    val: `${(load / 1000).toFixed(2)} kW` },
-              { key: 'grid',    color: 'var(--sf-idle)',    label: t('chart.grid'),    val: `${Math.abs(Math.round(grid))} W` },
+              { key: 'solar',   color: 'var(--sf-solar)',   label: t('chart.solar'),   val: `${pw(pv).value} ${pw(pv).unit}` },
+              { key: 'battery', color: 'var(--sf-battery)', label: t('chart.battery'), val: `${pw(-battery).value} ${pw(-battery).unit}` },
+              { key: 'load',    color: 'var(--sf-load)',    label: t('chart.home'),    val: `${pw(load).value} ${pw(load).unit}` },
+              { key: 'grid',    color: 'var(--sf-idle)',    label: t('chart.grid'),    val: `${pw(Math.abs(grid)).value} ${pw(Math.abs(grid)).unit}` },
               { key: 'soc',     color: '#06b6d4',           label: t('chart.soc'),     val: `${n(metrics.batterySoc)}%` },
             ].map(item => (
               <div

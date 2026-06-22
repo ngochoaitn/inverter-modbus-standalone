@@ -22,6 +22,7 @@ const vi: Dict = {
     live: 'Trực tiếp',
     realtime: 'THỜI GIAN THỰC',
   },
+  powerUnit: { title: 'Đơn vị công suất (Tự động / W / kW)', auto: 'TỰ ĐỘNG', autoShort: 'TĐ' },
   common: {
     settings: 'Cài đặt',
     setup: 'Cài đặt',
@@ -247,6 +248,7 @@ const en: Dict = {
     live: 'Live',
     realtime: 'REAL-TIME',
   },
+  powerUnit: { title: 'Power unit (Auto / W / kW)', auto: 'AUTO', autoShort: 'A' },
   common: {
     settings: 'Settings',
     setup: 'Setup',

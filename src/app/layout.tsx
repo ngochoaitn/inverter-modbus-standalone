@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './fe-styles.css';
 import './globals.css';
 import { I18nProvider } from '@/lib/i18n/I18nProvider';
+import { PowerUnitProvider } from '@/lib/prefs/PowerUnitProvider';
 
 export const metadata: Metadata = {
   title: 'LuxPower Local Monitor',
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="vi">
-      <body><I18nProvider>{children}</I18nProvider></body>
+      <body><I18nProvider><PowerUnitProvider>{children}</PowerUnitProvider></I18nProvider></body>
     </html>
   );
 }

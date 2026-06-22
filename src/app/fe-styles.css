@@ -3324,18 +3324,18 @@ body:has(.dashboard) {
     flex-shrink: 0;
   }
 
-  /* Header action cluster — keep all four controls uniform, round and tight. */
+  /* Header action cluster — keep all controls uniform, round and tight. */
   .sfm-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
   }
   .sfm-actions .sfm-circle-btn,
   .sfm-actions .tsw-btn {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    font-size: 15px;
+    font-size: 14px;
     box-shadow: none;
     flex-shrink: 0;
   }
