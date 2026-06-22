@@ -612,7 +612,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
           {/* Summary tiles */}
           <section className="sfm-summary">
             <div className="item" onClick={() => onMetric('pvEnergyToday', 'PV hôm nay', 'kWh', '#38a34b')}><span>MẶT TRỜI</span><strong className="solar-c">{fmt(metrics.pvEnergyToday, 1)}<small>kWh</small></strong></div>
-            <div className="item" onClick={() => onMetric('homeConsumptionEnergyToday', 'Tiêu thụ hôm nay', 'kWh', '#d44728')}><span>TIÊU THỤ</span><strong className="load-c">{fmt(metrics.loadEnergyToday, 1)}<small>kWh</small></strong></div>
+            <div className="item" onClick={() => onMetric('homeConsumptionEnergyToday', 'Tiêu thụ hôm nay', 'kWh', '#d44728')}><span>TIÊU THỤ</span><strong className="load-c">{fmt(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday, 1)}<small>kWh</small></strong></div>
             <div className="item" onClick={() => onMetric('batterySoc', 'SOC pin', '%', '#c99318')}><span>PIN %</span><strong className="battery-c">{soc}</strong></div>
             <div className="item" onClick={() => onMetric('importEnergyToday', 'Mua lưới hôm nay', 'kWh', '#7f858a')}><span>LƯỚI</span><strong className="idle-c">{fmt(metrics.importEnergyToday, 1)}<small>kWh</small></strong></div>
           </section>
