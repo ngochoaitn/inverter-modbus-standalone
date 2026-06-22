@@ -1,5 +1,9 @@
 // History metric catalogue — ported from the official SolarIOT historyMetrics.
-// Used by HistoricalGraph's "Thêm chỉ số" (add metric) picker.
+// Used by HistoricalGraph's "add metric" picker.
+//
+// `group` is a translation-key id (resolved via t('metricGroup.<id>')) and each
+// item's display label is resolved via t('metric.<key>'). The `label` field here
+// is kept only as a fallback (Vietnamese) when a translation is missing.
 
 export interface MetricItem {
   key: string;
@@ -14,7 +18,7 @@ export interface MetricGroup {
 
 export const METRIC_CATALOG: MetricGroup[] = [
   {
-    group: 'Công suất',
+    group: 'power',
     items: [
       { key: 'pvPower', label: 'Công suất PV', unit: 'W' },
       { key: 'loadPower', label: 'Tải tiêu thụ', unit: 'W' },
@@ -35,7 +39,7 @@ export const METRIC_CATALOG: MetricGroup[] = [
     ],
   },
   {
-    group: 'Pin',
+    group: 'battery',
     items: [
       { key: 'batterySoc', label: 'SOC pin', unit: '%' },
       { key: 'batterySoh', label: 'SOH pin', unit: '%' },
@@ -47,7 +51,7 @@ export const METRIC_CATALOG: MetricGroup[] = [
     ],
   },
   {
-    group: 'PV (điện áp)',
+    group: 'pvVoltage',
     items: [
       { key: 'pv1Voltage', label: 'PV1 điện áp', unit: 'V' },
       { key: 'pv2Voltage', label: 'PV2 điện áp', unit: 'V' },
@@ -56,14 +60,14 @@ export const METRIC_CATALOG: MetricGroup[] = [
     ],
   },
   {
-    group: 'Lưới',
+    group: 'grid',
     items: [
       { key: 'gridVoltage', label: 'Điện áp lưới', unit: 'V' },
       { key: 'gridFrequency', label: 'Tần số lưới', unit: 'Hz' },
     ],
   },
   {
-    group: 'Nhiệt độ',
+    group: 'temperature',
     items: [
       { key: 'internalTemperature', label: 'Nhiệt độ trong', unit: '°C' },
       { key: 'radiator1Temperature', label: 'Tản nhiệt 1', unit: '°C' },
@@ -73,7 +77,7 @@ export const METRIC_CATALOG: MetricGroup[] = [
     ],
   },
   {
-    group: 'Năng lượng (hôm nay)',
+    group: 'energyToday',
     items: [
       { key: 'pvEnergyToday', label: 'PV hôm nay', unit: 'kWh' },
       { key: 'homeConsumptionEnergyToday', label: 'Tiêu thụ hôm nay', unit: 'kWh' },

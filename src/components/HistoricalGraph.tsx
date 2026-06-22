@@ -7,11 +7,14 @@ import {
 } from 'recharts';
 import { Plus, X } from 'lucide-react';
 import { METRIC_CATALOG, METRIC_COLORS, resolveMetric } from '@/lib/historyMetrics';
+import { useT } from '@/lib/i18n/I18nProvider';
 
 const MAX_METRICS = 5;
 const GAP_MS = 5 * 60 * 1000;
 
-interface Entity { key: string; label: string; unit: string; color: string; }
+// Entity holds only the metric key; its display label is resolved through i18n
+// at render time so switching language updates an already-open chart.
+interface Entity { key: string; unit: string; color: string; }
 
 function toLocalDateTimeValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -37,10 +40,13 @@ async function fetchSeries(deviceSn: string, key: string, from: string, to: stri
   return Array.isArray(json) ? json : [];
 }
 
-export default function HistoricalGraph({ deviceSn, metric, label, unit, color, onClose, hideClose }: any) {
+export default function HistoricalGraph({ deviceSn, metric, unit, color, onClose, hideClose }: any) {
+  const t = useT();
+  // Resolve a metric's display label: i18n first, then catalog (vi) fallback.
+  const ml = (key: string) => t(`metric.${key}`, undefined, resolveMetric(key).label);
   const [entities, setEntities] = useState<Entity[]>(() =>
     metric
-      ? [{ key: metric, label: label || resolveMetric(metric).label, unit: unit ?? resolveMetric(metric).unit, color: color || METRIC_COLORS[0] }]
+      ? [{ key: metric, unit: unit ?? resolveMetric(metric).unit, color: color || METRIC_COLORS[0] }]
       : [],
   );
   const [rows, setRows] = useState<any[]>([]);
@@ -129,7 +135,7 @@ export default function HistoricalGraph({ deviceSn, metric, label, unit, color, 
     setEntities(prev => {
       if (prev.length >= MAX_METRICS || prev.some(e => e.key === key)) return prev;
       const m = resolveMetric(key);
-      return [...prev, { key, label: m.label, unit: m.unit ?? '', color: nextColor(prev) }];
+      return [...prev, { key, unit: m.unit ?? '', color: nextColor(prev) }];
     });
     setPickerOpen(false);
     setSearch('');
@@ -164,7 +170,7 @@ export default function HistoricalGraph({ deviceSn, metric, label, unit, color, 
   const fmtTick = (v: any) => new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const fmtDate = (v: any) => new Date(v).toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  const title = entities.length === 1 ? entities[0].label : `${entities.length} chỉ số`;
+  const title = entities.length === 1 ? ml(entities[0].key) : t('hg.nMetrics', { n: entities.length });
   const activeKeys = new Set(entities.map(e => e.key));
   const q = search.trim().toLowerCase();
 
@@ -179,16 +185,16 @@ export default function HistoricalGraph({ deviceSn, metric, label, unit, color, 
         <div className="hg-head-right">
           <div className="hg-range">
             <div className="hg-range-field">
-              <span className="hg-range-lbl">Từ</span>
+              <span className="hg-range-lbl">{t('hg.from')}</span>
               <input type="datetime-local" className="sf-date-input" value={fromValue} onChange={e => setFromValue(e.target.value)} />
             </div>
             <div className="hg-range-field">
-              <span className="hg-range-lbl">Đến</span>
+              <span className="hg-range-lbl">{t('hg.to')}</span>
               <input type="datetime-local" className="sf-date-input" value={toValue} onChange={e => setToValue(e.target.value)} />
             </div>
             <div className="hg-range-btns">
-              <button className="hg-apply-btn" onClick={applyRange}>Áp dụng</button>
-              <button className="hg-apply-btn" onClick={setLast24h}>24h qua</button>
+              <button className="hg-apply-btn" onClick={applyRange}>{t('hg.apply')}</button>
+              <button className="hg-apply-btn" onClick={setLast24h}>{t('hg.last24h')}</button>
             </div>
           </div>
           {!hideClose && (
@@ -202,35 +208,35 @@ export default function HistoricalGraph({ deviceSn, metric, label, unit, color, 
         {entities.map(e => (
           <span key={e.key} className="hg-chip" style={{ borderColor: `${e.color}66` }}>
             <span className="hg-chip-dot" style={{ background: e.color }} />
-            <span className="hg-chip-lbl">{e.label}</span>
+            <span className="hg-chip-lbl">{ml(e.key)}</span>
             {e.unit && <span className="hg-chip-unit">{e.unit}</span>}
             {entities.length > 1 && (
-              <button className="hg-chip-x" onClick={() => removeMetric(e.key)} title="Bỏ"><X size={11} /></button>
+              <button className="hg-chip-x" onClick={() => removeMetric(e.key)} title={t('hg.remove')}><X size={11} /></button>
             )}
           </span>
         ))}
         {entities.length < MAX_METRICS && (
           <div className="hg-add-wrap" ref={pickerRef}>
             <button className="hg-add-btn" onClick={() => setPickerOpen(o => !o)}>
-              <Plus size={13} /> Thêm chỉ số
+              <Plus size={13} /> {t('hg.addMetric')}
             </button>
             {pickerOpen && (
               <div className="hg-picker">
                 <input
                   autoFocus autoComplete="off" className="hg-picker-search"
-                  placeholder="Tìm chỉ số…" value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder={t('hg.searchMetric')} value={search} onChange={e => setSearch(e.target.value)}
                 />
                 <div className="hg-picker-list">
                   {METRIC_CATALOG.map(group => {
                     const items = group.items.filter(it =>
-                      !activeKeys.has(it.key) && (!q || it.label.toLowerCase().includes(q) || it.key.toLowerCase().includes(q)),
+                      !activeKeys.has(it.key) && (!q || ml(it.key).toLowerCase().includes(q) || it.key.toLowerCase().includes(q)),
                     );
                     return items.length ? (
                       <div key={group.group} className="hg-picker-group">
-                        <div className="hg-picker-group-title">{group.group}</div>
+                        <div className="hg-picker-group-title">{t(`metricGroup.${group.group}`)}</div>
                         {items.map(it => (
                           <button key={it.key} className="hg-picker-item" onClick={() => addMetric(it.key)}>
-                            <span>{it.label}</span>
+                            <span>{ml(it.key)}</span>
                             {it.unit && <span className="hg-picker-unit">{it.unit}</span>}
                           </button>
                         ))}
@@ -247,9 +253,9 @@ export default function HistoricalGraph({ deviceSn, metric, label, unit, color, 
       {/* Chart */}
       <div className="hg-chart">
         {loading ? (
-          <div className="hg-loading">Đang tải lịch sử...</div>
+          <div className="hg-loading">{t('hg.loading')}</div>
         ) : rows.length === 0 ? (
-          <div className="hg-loading">Không có dữ liệu</div>
+          <div className="hg-loading">{t('hg.noData')}</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={rows} margin={{ top: 8, right: rightEntities.length ? 8 : 4, left: 0, bottom: 0 }}>
@@ -286,7 +292,7 @@ export default function HistoricalGraph({ deviceSn, metric, label, unit, color, 
                 labelFormatter={fmtDate}
                 formatter={(v: any, name: any) => {
                   const e = entityByKey[name] || {};
-                  return [v == null ? '--' : `${v}${e.unit ? ` ${e.unit}` : ''}`, e.label || name];
+                  return [v == null ? '--' : `${v}${e.unit ? ` ${e.unit}` : ''}`, ml(name)];
                 }}
               />
               {entities.length === 1 ? (

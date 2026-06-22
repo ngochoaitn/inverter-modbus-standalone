@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useT } from '@/lib/i18n/I18nProvider';
 
 // ── Theme skins ────────────────────────────────────────
 // Ported from the official SolarIOT ThemeSwitcher. Each skin renders a small
@@ -145,6 +146,7 @@ interface ThemeSwitcherProps {
 }
 
 export default function ThemeSwitcher({ themeSkin, onThemeSkinChange }: ThemeSwitcherProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -183,7 +185,7 @@ export default function ThemeSwitcher({ themeSkin, onThemeSkinChange }: ThemeSwi
 
   return (
     <>
-      <button ref={btnRef} type="button" className="tsw-btn" onClick={toggle} title="Chuyển giao diện">
+      <button ref={btnRef} type="button" className="tsw-btn" onClick={toggle} title={t('theme.switchSkin')}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor"
           strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
           <rect x="1" y="1" width="6" height="6" rx="1.5" />
@@ -191,12 +193,12 @@ export default function ThemeSwitcher({ themeSkin, onThemeSkinChange }: ThemeSwi
           <rect x="1" y="9" width="6" height="6" rx="1.5" />
           <rect x="9" y="9" width="6" height="6" rx="1.5" />
         </svg>
-        <span>Giao Diện</span>
+        <span>{t('theme.skin')}</span>
       </button>
 
       {open && (
         <div ref={popRef} className="tsw-popover" style={{ top: pos.top, right: pos.right }}>
-          <div className="tsw-label">Chọn giao diện</div>
+          <div className="tsw-label">{t('theme.chooseSkin')}</div>
           <div className="tsw-grid">
             {THEME_SKINS.map(skin => {
               const implemented = IMPLEMENTED_SKINS.includes(skin.id);
@@ -210,7 +212,7 @@ export default function ThemeSwitcher({ themeSkin, onThemeSkinChange }: ThemeSwi
                 >
                   <div className="tsw-thumb">{skin.thumb(skin.color)}</div>
                   <div className="tsw-card-name">{skin.name}</div>
-                  {!implemented && <div className="tsw-soon-tag">Sắp có</div>}
+                  {!implemented && <div className="tsw-soon-tag">{t('theme.soon')}</div>}
                   {skin.id === themeSkin && (
                     <div className="tsw-badge">
                       <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="white"

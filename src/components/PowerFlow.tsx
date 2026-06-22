@@ -10,6 +10,8 @@ import {
 } from 'recharts';
 import HistoricalGraph from './HistoricalGraph';
 import ThemeSwitcher, { type ThemeSkin } from './ThemeSwitcher';
+import LanguageSwitcher from './LanguageSwitcher';
+import { useT } from '@/lib/i18n/I18nProvider';
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -31,17 +33,18 @@ const isToday = (d: Date) => dateStr(d) === dateStr(new Date());
 
 // ── Weather ────────────────────────────────────────────
 
-function wmoLabel(code: number) {
-  if (code === 0) return 'Clear';
-  if (code <= 2) return 'Partly Cloudy';
-  if (code === 3) return 'Overcast';
-  if (code <= 48) return 'Foggy';
-  if (code <= 57) return 'Drizzle';
-  if (code <= 67) return 'Rain';
-  if (code <= 77) return 'Snow';
-  if (code <= 82) return 'Showers';
-  if (code <= 86) return 'Snow Showers';
-  return 'Thunderstorm';
+// Returns a translation key suffix under `weather.*` for a WMO weather code.
+function wmoKey(code: number) {
+  if (code === 0) return 'clear';
+  if (code <= 2) return 'partlyCloudy';
+  if (code === 3) return 'overcast';
+  if (code <= 48) return 'foggy';
+  if (code <= 57) return 'drizzle';
+  if (code <= 67) return 'rain';
+  if (code <= 77) return 'snow';
+  if (code <= 82) return 'showers';
+  if (code <= 86) return 'snowShowers';
+  return 'thunderstorm';
 }
 
 function WeatherGlyph({ code = 0, size = 32 }: { code?: number; size?: number }) {
@@ -106,11 +109,11 @@ function useWeather() {
 // ── Energy History Chart ────────────────────────────────
 
 const CHART_SERIES = [
-  { key: 'solar',   color: '#38a34b', label: 'Solar Power',   axis: 'left'  },
-  { key: 'load',    color: '#5ba4d4', label: 'House Load',    axis: 'left'  },
-  { key: 'grid',    color: '#a855f7', label: 'Grid Power',    axis: 'left'  },
-  { key: 'battery', color: '#c99318', label: 'Battery Power', axis: 'left'  },
-  { key: 'soc',     color: '#06b6d4', label: 'Battery SOC',   axis: 'right' },
+  { key: 'solar',   color: '#38a34b', labelKey: 'chart.solarPower',   axis: 'left'  },
+  { key: 'load',    color: '#5ba4d4', labelKey: 'chart.houseLoad',    axis: 'left'  },
+  { key: 'grid',    color: '#a855f7', labelKey: 'chart.gridPower',    axis: 'left'  },
+  { key: 'battery', color: '#c99318', labelKey: 'chart.batteryPower', axis: 'left'  },
+  { key: 'soc',     color: '#06b6d4', labelKey: 'chart.batterySoc',   axis: 'right' },
 ];
 
 function useEnergyChart(deviceSn: string | undefined, date: Date) {
@@ -141,6 +144,7 @@ function useEnergyChart(deviceSn: string | undefined, date: Date) {
 }
 
 function EnergyHistoryChart({ data, hiddenSeries, date, height = 260 }: any) {
+  const t = useT();
   const dayMs = useMemo(() => {
     const d = date ? new Date(date) : new Date();
     d.setHours(0, 0, 0, 0);
@@ -203,13 +207,13 @@ function EnergyHistoryChart({ data, hiddenSeries, date, height = 260 }: any) {
           contentStyle={{ background: 'var(--sf-panel)', border: '1px solid var(--sf-line)', borderRadius: 4, fontSize: 11, padding: '6px 10px' }}
           labelFormatter={fmtTick as any}
           formatter={(v: any, name: any) => {
-            const s = CHART_SERIES.find(x => x.label === name);
+            const s = CHART_SERIES.find(x => t(x.labelKey) === name);
             return s?.axis === 'right' ? [`${v}%`, name] : [`${v} kW`, name];
           }}
         />
         {CHART_SERIES.map(s => (
           <Area
-            key={s.key} yAxisId={s.axis} type="monotone" dataKey={s.key} name={s.label}
+            key={s.key} yAxisId={s.axis} type="monotone" dataKey={s.key} name={t(s.labelKey)}
             stroke={s.color} strokeWidth={s.axis === 'right' ? 1.5 : 1.8}
             strokeDasharray={s.axis === 'right' ? '4 2' : undefined}
             fill={`url(#efg-${s.key})`} dot={false}
@@ -226,11 +230,11 @@ function EnergyHistoryChart({ data, hiddenSeries, date, height = 260 }: any) {
 // ── Trend Chart ────────────────────────────────────────
 
 const TREND_SERIES = [
-  { key: 'solar',        color: '#38a34b', label: 'Solar'     },
-  { key: 'home',         color: '#d44728', label: 'Home'      },
-  { key: 'batCharge',    color: '#c99318', label: 'Bat Charge'},
-  { key: 'batDischarge', color: '#e07535', label: 'Bat Disch.'},
-  { key: 'gridImport',   color: '#7f858a', label: 'Grid Imp.' },
+  { key: 'solar',        color: '#38a34b', labelKey: 'trend.solar'        },
+  { key: 'home',         color: '#d44728', labelKey: 'trend.home'         },
+  { key: 'batCharge',    color: '#c99318', labelKey: 'trend.batCharge'    },
+  { key: 'batDischarge', color: '#e07535', labelKey: 'trend.batDischarge' },
+  { key: 'gridImport',   color: '#7f858a', labelKey: 'trend.gridImport'   },
 ];
 
 type TrendPeriod = 'day' | 'month' | 'year';
@@ -260,6 +264,7 @@ function TrendChart({ data, period, hiddenSeries, onToggle, height = 300 }: {
   data: any[]; period: TrendPeriod; hiddenSeries?: Set<string>;
   onToggle?: (key: string) => void; height?: number;
 }) {
+  const t = useT();
   const chartData = useMemo(
     () => data.map(d => ({ label: fmtTrendLabel(d.period, period), ...d })),
     [data, period],
@@ -297,14 +302,14 @@ function TrendChart({ data, period, hiddenSeries, onToggle, height = 300 }: {
                   onClick={() => onToggle?.(s.key)}
                 >
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
-                  {s.label}
+                  {t(s.labelKey)}
                 </span>
               ))}
             </div>
           )}
         />
         {TREND_SERIES.map(s => (
-          <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color} radius={[2, 2, 0, 0]} isAnimationActive={false} hide={hiddenSeries?.has(s.key)} />
+          <Bar key={s.key} dataKey={s.key} name={t(s.labelKey)} fill={s.color} radius={[2, 2, 0, 0]} isAnimationActive={false} hide={hiddenSeries?.has(s.key)} />
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -346,7 +351,6 @@ function MetricModal({ deviceSn, metric, onClose }: any) {
         <HistoricalGraph
           deviceSn={deviceSn}
           metric={metric.metric}
-          label={metric.label}
           unit={metric.unit}
           color={metric.color}
           onClose={onClose}
@@ -359,6 +363,7 @@ function MetricModal({ deviceSn, metric, onClose }: any) {
 // ── Config Modal ───────────────────────────────────────
 
 function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () => void; onSaved: () => void }) {
+  const t = useT();
   const [form, setForm] = useState({
     deviceSn: config?.deviceSn || '',
     dongleSn: config?.dongleSn || '',
@@ -379,8 +384,8 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.deviceSn.trim()) { setError('Device SN là bắt buộc'); return; }
-    if (!form.inverterIp.trim()) { setError('Inverter IP là bắt buộc'); return; }
+    if (!form.deviceSn.trim()) { setError(t('config.errDeviceSn')); return; }
+    if (!form.inverterIp.trim()) { setError(t('config.errInverterIp')); return; }
     setSaving(true); setError('');
     try {
       const res = await fetch('/api/setup', {
@@ -394,11 +399,11 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Lỗi lưu cấu hình'); return; }
+      if (!res.ok) { setError(data.error || t('config.errSave')); return; }
       onSaved();
       onClose();
     } catch {
-      setError('Không thể kết nối server');
+      setError(t('config.errConnect'));
     } finally {
       setSaving(false);
     }
@@ -414,7 +419,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
         <div className="sf-config-panel">
           <div className="sf-config-head">
             <div>
-              <strong>Cấu hình hệ thống</strong>
+              <strong>{t('config.title')}</strong>
               <span>Lux Local · Modbus TCP</span>
             </div>
             <button type="button" className="sf-icon-btn" onClick={onClose}><X size={16} /></button>
@@ -424,22 +429,22 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
             <div className="sf-config-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <div className="sf-config-field">
                 <div className="field-label-row">
-                  <label>Device SN <span style={{ color: '#ef4444' }}>*</span></label>
+                  <label>{t('config.deviceSn')} <span style={{ color: '#ef4444' }}>*</span></label>
                 </div>
                 <input type="text" value={form.deviceSn} onChange={set('deviceSn')} autoComplete="off" spellCheck={false} />
               </div>
               <div className="sf-config-field">
-                <div className="field-label-row"><label>Dongle SN</label></div>
+                <div className="field-label-row"><label>{t('config.dongleSn')}</label></div>
                 <input type="text" value={form.dongleSn} onChange={set('dongleSn')} autoComplete="off" spellCheck={false} />
               </div>
               <div className="sf-config-field">
                 <div className="field-label-row">
-                  <label>Inverter IP <span style={{ color: '#ef4444' }}>*</span></label>
+                  <label>{t('config.inverterIp')} <span style={{ color: '#ef4444' }}>*</span></label>
                 </div>
                 <input type="text" value={form.inverterIp} onChange={set('inverterIp')} autoComplete="off" spellCheck={false} />
               </div>
               <div className="sf-config-field">
-                <div className="field-label-row"><label>Modbus Port</label></div>
+                <div className="field-label-row"><label>{t('config.modbusPort')}</label></div>
                 <input type="number" value={form.inverterPort} onChange={set('inverterPort')} min={1} max={65535} />
               </div>
             </div>
@@ -452,7 +457,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
 
             <div className="sf-config-actions">
               <button type="submit" className="primary" disabled={saving}>
-                {saving ? 'Đang lưu...' : 'Lưu cấu hình'}
+                {saving ? t('config.saving') : t('config.save')}
               </button>
             </div>
           </form>
@@ -512,6 +517,7 @@ function useIsMobile() {
 // ── MobileFlow ─────────────────────────────────────────
 
 function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved, themeSkin, onThemeSkinChange }: PowerFlowProps) {
+  const t = useT();
   const [activeTab, setActiveTab]   = useState<'flow' | 'stats'>('flow');
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>('month');
   const [hiddenTrend, setHiddenTrend] = useState(new Set<string>());
@@ -519,8 +525,8 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const [configOpen, setConfigOpen] = useState(false);
   const [activeMetric, setActiveMetric] = useState<any>(null);
 
-  const onMetric = (metric: string, label: string, unit: string, color: string) =>
-    setActiveMetric({ metric, label, unit, color });
+  const onMetric = (metric: string, unit: string, color: string) =>
+    setActiveMetric({ metric, unit, color });
 
   const now = useNow();
   const weather = useWeather();
@@ -558,16 +564,17 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
             {'Lux Local'}
           </h2>
           <div className="sub">
-            {isOnline ? 'Online' : 'Offline'}
+            {isOnline ? t('status.online') : t('status.offline')}
             {config?.dongleSn ? ` · ${config.dongleSn}` : ''}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="sfm-actions">
+          <LanguageSwitcher variant="circle" />
           <ThemeSwitcher themeSkin={themeSkin} onThemeSkinChange={onThemeSkinChange} />
-          <button className="sfm-circle-btn" onClick={onThemeToggle} title="Toggle theme">
+          <button className="sfm-circle-btn" onClick={onThemeToggle} title={t('common.toggleTheme')}>
             {theme === 'dark' ? '☀' : '◑'}
           </button>
-          <button className="sfm-circle-btn" onClick={() => setConfigOpen(true)} title="Settings">
+          <button className="sfm-circle-btn" onClick={() => setConfigOpen(true)} title={t('common.settings')}>
             <Settings size={16} />
           </button>
         </div>
@@ -585,25 +592,25 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
               </div>
             </div>
             <div className="sf-wm-sep" />
-            <div className="sf-wm-stat"><span className="k">Sunset</span><span className="v">{weather?.sunset ?? '--:--'}</span></div>
-            <div className="sf-wm-stat"><span className="k">UV</span><span className="v">{weather?.uv ?? '--'}</span></div>
-            <div className="sf-wm-stat"><span className="k">Irrad</span><span className="v">{weather ? `${weather.irr} kWh/m²` : '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.sunset')}</span><span className="v">{weather?.sunset ?? '--:--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.uv')}</span><span className="v">{weather?.uv ?? '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.irrad')}</span><span className="v">{weather ? `${weather.irr} kWh/m²` : '--'}</span></div>
           </div>
 
           {/* Main numbers */}
           <section className="sfm-card main-card">
             <div className="sfm-main-row">
-              <div className="sfm-main-pv" onClick={() => onMetric('pvPower', 'Công suất PV', 'W', '#38a34b')}>
-                <small>ĐANG SẢN XUẤT</small>
+              <div className="sfm-main-pv" onClick={() => onMetric('pvPower', 'W', '#38a34b')}>
+                <small>{t('mobile.producing')}</small>
                 <strong className="solar-c">{(pv / 1000).toFixed(2)}<span>kW</span></strong>
               </div>
               <div className="sfm-main-sep" />
-              <div className="sfm-main-item" onClick={() => onMetric('loadPower', 'Tải tiêu thụ', 'W', '#d44728')}>
-                <small>TIÊU THỤ</small>
+              <div className="sfm-main-item" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
+                <small>{t('mobile.consume')}</small>
                 <strong className="load-c">{(load / 1000).toFixed(2)}<span>kW</span></strong>
               </div>
-              <div className="sfm-main-item" onClick={() => onMetric('batteryFlow', 'Dòng pin (±)', 'W', '#c99318')}>
-                <small>PIN</small>
+              <div className="sfm-main-item" onClick={() => onMetric('batteryFlow', 'W', '#c99318')}>
+                <small>{t('mobile.battery')}</small>
                 <strong className="battery-c">{(Math.abs(battery) / 1000).toFixed(2)}<span>kW</span></strong>
               </div>
             </div>
@@ -611,19 +618,19 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
 
           {/* Summary tiles */}
           <section className="sfm-summary">
-            <div className="item" onClick={() => onMetric('pvEnergyToday', 'PV hôm nay', 'kWh', '#38a34b')}><span>MẶT TRỜI</span><strong className="solar-c">{fmt(metrics.pvEnergyToday, 1)}<small>kWh</small></strong></div>
-            <div className="item" onClick={() => onMetric('homeConsumptionEnergyToday', 'Tiêu thụ hôm nay', 'kWh', '#d44728')}><span>TIÊU THỤ</span><strong className="load-c">{fmt(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday, 1)}<small>kWh</small></strong></div>
-            <div className="item" onClick={() => onMetric('batterySoc', 'SOC pin', '%', '#c99318')}><span>PIN %</span><strong className="battery-c">{soc}</strong></div>
-            <div className="item" onClick={() => onMetric('importEnergyToday', 'Mua lưới hôm nay', 'kWh', '#7f858a')}><span>LƯỚI</span><strong className="idle-c">{fmt(metrics.importEnergyToday, 1)}<small>kWh</small></strong></div>
+            <div className="item" onClick={() => onMetric('pvEnergyToday', 'kWh', '#38a34b')}><span>{t('mobile.solar')}</span><strong className="solar-c">{fmt(metrics.pvEnergyToday, 1)}<small>kWh</small></strong></div>
+            <div className="item" onClick={() => onMetric('homeConsumptionEnergyToday', 'kWh', '#d44728')}><span>{t('mobile.consumption')}</span><strong className="load-c">{fmt(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday, 1)}<small>kWh</small></strong></div>
+            <div className="item" onClick={() => onMetric('batterySoc', '%', '#c99318')}><span>{t('mobile.batteryPct')}</span><strong className="battery-c">{soc}</strong></div>
+            <div className="item" onClick={() => onMetric('importEnergyToday', 'kWh', '#7f858a')}><span>{t('mobile.grid')}</span><strong className="idle-c">{fmt(metrics.importEnergyToday, 1)}<small>kWh</small></strong></div>
           </section>
 
           {/* Live flow card (cross layout) */}
           <section className="sfm-card flow-card">
             <div className="head">
-              <span>LUỒNG ĐIỆN</span>
+              <span>{t('mobile.powerFlow')}</span>
               <small>
                 <span className={`dot${isOnline ? ' online' : ''}`} style={{ width: 6, height: 6 }} />
-                THỜI GIAN THỰC
+                {t('status.realtime')}
               </small>
             </div>
             <div className="vflow2d">
@@ -643,39 +650,39 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 <circle cx="150" cy="160" r="3" fill="#fff" stroke="var(--sf-ink-3)" strokeWidth="1.2" />
               </svg>
 
-              <div className="vnode v2 pv" onClick={() => onMetric('pvPower', 'Công suất PV', 'W', '#38a34b')}>
+              <div className="vnode v2 pv" onClick={() => onMetric('pvPower', 'W', '#38a34b')}>
                 <div className="gly sun"><Sun size={14} color="#fff" /></div>
-                <div className="name">Tổng PV</div>
+                <div className="name">{t('node.totalPv')}</div>
                 <div className="val">{(pv / 1000).toFixed(2)}<span className="u">kW</span></div>
-                <div className="sub">2 MPPT</div>
+                <div className="sub">{t('node.twoMppt')}</div>
               </div>
 
-              <div className="vnode v2 bat" onClick={() => onMetric('batteryFlow', 'Dòng pin (±)', 'W', '#c99318')}>
+              <div className="vnode v2 bat" onClick={() => onMetric('batteryFlow', 'W', '#c99318')}>
                 <div className={`gly batg${isBatChg ? ' charging' : ''}`} style={{ '--soc': `${soc}%` } as any}>
                   <div className="fill" />
                 </div>
-                <div className="name">Pin</div>
+                <div className="name">{t('node.battery')}</div>
                 <div className="val" style={{ color: 'var(--sf-battery)' }}>{(-battery / 1000).toFixed(2)}<span className="u">kW</span></div>
-                <div className="sub">{soc}% · {batteryState === 'Charging' ? 'Đang sạc' : batteryState === 'Discharging' ? 'Đang xả' : 'Chờ'}</div>
+                <div className="sub">{soc}% · {batteryState === 'Charging' ? t('state.charging') : batteryState === 'Discharging' ? t('state.discharging') : t('state.standby')}</div>
               </div>
 
-              <div className="vnode v2 inv" onClick={() => onMetric('loadPower', 'Công suất inverter', 'W', '#5ba4d4')}>
+              <div className="vnode v2 inv" onClick={() => onMetric('inverterPower', 'W', '#5ba4d4')}>
                 <div className="name">LUXPOWER</div>
                 <div className="val">{fmt(inverterNet)}<span className="u">W net</span></div>
                 <div className="pbar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
                 <div className="sub">DC {fmt(metrics.dcDcTemperature)}° · AC {fmt(metrics.inverterTemperature)}°</div>
               </div>
 
-              <div className="vnode v2 load" onClick={() => onMetric('loadPower', 'Tải tiêu thụ', 'W', '#d44728')}>
+              <div className="vnode v2 load" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
                 <div className="gly houseg" />
-                <div className="name">Nhà</div>
+                <div className="name">{t('node.home')}</div>
                 <div className="val" style={{ color: 'var(--sf-load)' }}>{(load / 1000).toFixed(2)}<span className="u">kW</span></div>
-                <div className="sub">Thiết yếu</div>
+                <div className="sub">{t('node.essential')}</div>
               </div>
 
-              <div className="vnode v2 gridn" onClick={() => onMetric('gridFlow', 'Lưới (±)', 'W', '#7f858a')}>
+              <div className="vnode v2 gridn" onClick={() => onMetric('gridFlow', 'W', '#7f858a')}>
                 <div className="gly towerg" />
-                <div className="name">Lưới</div>
+                <div className="name">{t('node.grid')}</div>
                 <div className="val" style={{ color: gridActive ? 'var(--sf-ink)' : 'var(--sf-ink-3)' }}>{Math.abs(Math.round(grid))}<span className="u">W</span></div>
                 <div className="sub">{fmt(metrics.gridVoltage, 1)}V · {fmt(metrics.gridFrequency, 2)}Hz</div>
               </div>
@@ -685,7 +692,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
           {/* Today chart */}
           <section className="sfm-chart-card">
             <div className="sfm-chart-head">
-              <span className="sfm-chart-title">Energy · Today</span>
+              <span className="sfm-chart-title">{t('title.energyToday')}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 <button className="sf-nav-day-btn" onClick={() => setSelectedDate(d => addDays(d, -1))}><ChevronLeft size={12} /></button>
                 <input
@@ -702,11 +709,11 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
           {/* Trend chart */}
           <section className="sfm-chart-card">
             <div className="sfm-chart-head">
-              <span className="sfm-chart-title">Energy History · Trend</span>
+              <span className="sfm-chart-title">{t('title.energyTrend')}</span>
               <div className="sf-period-toggle">
                 {(['day', 'month', 'year'] as TrendPeriod[]).map(p => (
                   <button key={p} className={trendPeriod === p ? 'active' : ''} onClick={() => setTrendPeriod(p)}>
-                    {p === 'day' ? 'Day' : p === 'month' ? 'Month' : 'Year'}
+                    {t(`period.${p}`)}
                   </button>
                 ))}
               </div>
@@ -719,13 +726,13 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
         <div className="sfm-card summary-card" style={{ margin: '0 12px 16px' }}>
           <div className="sfm-list no-pad">
             {[
-              { label: 'Solar Output',    val: `${fmt(metrics.pvEnergyToday, 1)} kWh`,                 color: 'var(--sf-solar)'   },
-              { label: 'Home Usage',      val: `${fmt(metrics.loadEnergyToday, 1)} kWh`,               color: 'var(--sf-load)'    },
-              { label: 'Bat Charge',      val: `${fmt(metrics.batteryChargeEnergyToday, 1)} kWh`,      color: 'var(--sf-battery)' },
-              { label: 'Bat Discharge',   val: `${fmt(metrics.batteryDischargeEnergyToday, 1)} kWh`,   color: 'var(--sf-battery)' },
-              { label: 'Grid Import',     val: `${fmt(metrics.importEnergyToday, 1)} kWh`,             color: 'var(--sf-idle)'    },
-              { label: 'Grid Export',     val: `${fmt(metrics.exportEnergyToday, 1)} kWh`,             color: 'var(--sf-solar)'   },
-              { label: 'Self-Sufficiency',val: `${fmt(selfSufficiency, 0)}%`,                          color: 'var(--sf-solar)'   },
+              { label: t('summary.solarOutput'),     val: `${fmt(metrics.pvEnergyToday, 1)} kWh`,                 color: 'var(--sf-solar)'   },
+              { label: t('summary.homeUsage'),       val: `${fmt(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday, 1)} kWh`,               color: 'var(--sf-load)'    },
+              { label: t('summary.batCharge'),       val: `${fmt(metrics.batteryChargeEnergyToday, 1)} kWh`,      color: 'var(--sf-battery)' },
+              { label: t('summary.batDischarge'),    val: `${fmt(metrics.batteryDischargeEnergyToday, 1)} kWh`,   color: 'var(--sf-battery)' },
+              { label: t('summary.gridImport'),      val: `${fmt(metrics.importEnergyToday, 1)} kWh`,             color: 'var(--sf-idle)'    },
+              { label: t('summary.gridExport'),      val: `${fmt(metrics.exportEnergyToday, 1)} kWh`,             color: 'var(--sf-solar)'   },
+              { label: t('summary.selfSufficiency'), val: `${fmt(selfSufficiency, 0)}%`,                          color: 'var(--sf-solar)'   },
             ].map(row => (
               <div key={row.label} className="sfm-list-row">
                 <span>{row.label}</span>
@@ -740,15 +747,15 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
       <nav className="sfm-nav">
         <button className={activeTab === 'flow' ? 'active' : ''} onClick={() => setActiveTab('flow')}>
           <span className="icn"><span className="sq" /></span>
-          <span>Flow</span>
+          <span>{t('nav.flow')}</span>
         </button>
         <button className={activeTab === 'stats' ? 'active' : ''} onClick={() => setActiveTab('stats')}>
           <span className="icn"><span className="li"><b /><b /><b /></span></span>
-          <span>Stats</span>
+          <span>{t('nav.stats')}</span>
         </button>
         <button onClick={() => setConfigOpen(true)}>
           <span className="icn"><Settings size={16} /></span>
-          <span>Setup</span>
+          <span>{t('nav.setup')}</span>
         </button>
       </nav>
 
@@ -778,6 +785,7 @@ interface PowerFlowProps {
 }
 
 function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggle, onConfigSaved, themeSkin, onThemeSkinChange }: PowerFlowProps) {
+  const t = useT();
   const now = useNow();
   const weather = useWeather();
   const [hiddenSeries, setHiddenSeries] = useState(new Set<string>());
@@ -794,8 +802,8 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const toggleSeries = (key: string) =>
     setHiddenSeries(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; });
 
-  const onMetric = (metric: string, label: string, unit: string, color: string) =>
-    setActiveMetric({ metric, label, unit, color });
+  const onMetric = (metric: string, unit: string, color: string) =>
+    setActiveMetric({ metric, unit, color });
 
   const pv      = n(metrics.pvPower) || (n(metrics.pv1Power) + n(metrics.pv2Power));
   const battery = n(metrics.batteryFlow);
@@ -807,7 +815,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const inverterNet = invTotalIn - invTotalOut;
 
   const isBatChg = battery < -20;
-  const batteryState = battery < 0 ? 'Charging' : battery > 0 ? 'Discharging' : 'Standby';
+  const batteryStateLabel = battery < 0 ? t('state.charging') : battery > 0 ? t('state.discharging') : t('state.standby');
   const batteryPowerSigned = `${battery < 0 ? '+' : battery > 0 ? '-' : ''}${(Math.abs(battery) / 1000).toFixed(2)} kW`;
 
   const lastSeen  = lastSeenAt ? new Date(lastSeenAt) : null;
@@ -840,12 +848,13 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             <div className="sf-crumbs">
               <div className={`sf-status-dot${isOnline ? '' : ' offline'}`} />
               <span>
-                {isOnline ? 'System Online' : lastTime ? `Offline · ${lastTime}` : 'Waiting for data'}
+                {isOnline ? t('status.systemOnline') : lastTime ? t('status.offlineAt', { time: lastTime }) : t('status.waiting')}
               </span>
             </div>
-            <h1 className="sf-stage-title">POWER FLOW</h1>
+            <h1 className="sf-stage-title">{t('title.powerFlow')}</h1>
           </div>
           <div className="sf-topbar-actions">
+            <LanguageSwitcher />
             <ThemeSwitcher themeSkin={themeSkin} onThemeSkinChange={onThemeSkinChange} />
             <button className="sf-btn sf-theme-btn" onClick={onThemeToggle}>
               {theme === 'dark' ? (
@@ -853,10 +862,10 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
               ) : (
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="8" cy="8" r="3.2"/><g strokeLinecap="round"><line x1="8" y1="1.5" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="14.5"/><line x1="1.5" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="14.5" y2="8"/><line x1="3.4" y1="3.4" x2="4.5" y2="4.5"/><line x1="11.5" y1="11.5" x2="12.6" y2="12.6"/><line x1="3.4" y1="12.6" x2="4.5" y2="11.5"/><line x1="11.5" y1="4.5" x2="12.6" y2="3.4"/></g></svg>
               )}
-              <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
+              <span>{theme === 'dark' ? t('common.dark') : t('common.light')}</span>
             </button>
             <button className="sf-btn sf-btn-primary" type="button" onClick={() => setConfigOpen(true)}>
-              <Settings size={14} /> Setup
+              <Settings size={14} /> {t('common.setup')}
             </button>
           </div>
         </div>
@@ -865,15 +874,15 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
           <div className="sf-dev-lic">
             <div className="dl-sn">
               <div className="dl-row">
-                <span className="dl-lab">Device SN</span>
+                <span className="dl-lab">{t('config.deviceSn')}</span>
                 <span className="dl-val">{deviceSn || config?.deviceSn || '--'}</span>
               </div>
               <div className="dl-row">
-                <span className="dl-lab">Dongle SN</span>
+                <span className="dl-lab">{t('config.dongleSn')}</span>
                 <span className="dl-val">{config?.dongleSn || '--'}</span>
               </div>
               <div className="dl-row">
-                <span className="dl-lab">Inverter</span>
+                <span className="dl-lab">{t('config.inverter')}</span>
                 <span className="dl-val">{config?.inverterIp ? `${config.inverterIp}:${config.inverterPort ?? 8000}` : '--'}</span>
               </div>
             </div>
@@ -883,12 +892,12 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             <WeatherGlyph code={weather?.code ?? 0} size={32} />
             <div className="sf-wm-temp">
               <div className="sf-wm-t">{weather ? weather.tempMax : '--'}<span className="sf-wm-deg">°C</span><span className="sf-wm-min">/{weather ? weather.tempMin : '--'}°</span></div>
-              <div className="sf-wm-c">{weather ? (weather.city ? `${weather.city} · ${wmoLabel(weather.code)}` : wmoLabel(weather.code)) : '--'}</div>
+              <div className="sf-wm-c">{weather ? (weather.city ? `${weather.city} · ${t(`weather.${wmoKey(weather.code)}`)}` : t(`weather.${wmoKey(weather.code)}`)) : '--'}</div>
             </div>
             <div className="sf-wm-sep" />
-            <div className="sf-wm-stat"><span className="k">Sunset</span><span className="v">{weather?.sunset ?? '--:--'}</span></div>
-            <div className="sf-wm-stat"><span className="k">UV</span><span className="v">{weather?.uv ?? '--'}</span></div>
-            <div className="sf-wm-stat"><span className="k">Irrad</span><span className="v">{weather ? `${weather.irr} kWh/m²` : '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.sunset')}</span><span className="v">{weather?.sunset ?? '--:--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.uv')}</span><span className="v">{weather?.uv ?? '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.irrad')}</span><span className="v">{weather ? `${weather.irr} kWh/m²` : '--'}</span></div>
           </div>
         </div>
       </div>
@@ -916,9 +925,9 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             </svg>
 
             <div className="sf-wire-label pv-main"><span className="arr">→</span>{(pv / 1000).toFixed(2)} kW</div>
-            <div className="sf-wire-label battery-main"><span className="arr">{battery < 0 ? '←' : '→'}</span>{batteryPowerSigned} · {batteryState.toLowerCase()}</div>
+            <div className="sf-wire-label battery-main"><span className="arr">{battery < 0 ? '←' : '→'}</span>{batteryPowerSigned} · {batteryStateLabel.toLowerCase()}</div>
             <div className="sf-wire-label load-main"><span className="arr">→</span>{(load / 1000).toFixed(2)} kW</div>
-            <div className="sf-wire-label grid-main"><span className="arr">◦</span>{gridActive ? `${Math.abs(Math.round(grid))} W` : '0 W idle'}</div>
+            <div className="sf-wire-label grid-main"><span className="arr">◦</span>{gridActive ? `${Math.abs(Math.round(grid))} W` : `0 W ${t('node.idleLower')}`}</div>
 
             {/* PV Strings */}
             <div className="sf-pv-string-row">
@@ -932,10 +941,10 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                     key={i} type="button"
                     className={`sf-string${active ? ' active' : ''}`}
                     style={{ opacity: active ? 1 : 0.35, pointerEvents: active ? 'auto' : 'none' }}
-                    onClick={() => onMetric(`pv${i}Power`, `PV${i} Power`, 'W', '#38a34b')}
+                    onClick={() => onMetric(`pv${i}Power`, 'W', '#38a34b')}
                   >
                     <div className="sf-label">
-                      <span>PV String {i}</span>
+                      <span>{t('node.pvString', { n: i })}</span>
                       <span className="sf-tag">MPPT {i}</span>
                     </div>
                     <div className="sf-pv-val-row">
@@ -949,17 +958,17 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
 
             <Node
               className="solar"
-              label="PV Total"
+              label={t('node.pvTotal')}
               value={Math.round(pv)}
               unit=" W"
-              tag="DC"
-              sub={pv > 0 ? '' : 'No solar'}
+              tag={t('node.dc')}
+              sub={pv > 0 ? '' : t('node.noSolar')}
               glyph="sun"
-              onClick={() => onMetric('pvPower', 'Solar Output', 'W', '#38a34b')}
+              onClick={() => onMetric('pvPower', 'W', '#38a34b')}
             />
 
-            <div className="sf-inverter" onClick={() => onMetric('loadPower', 'Inverter Power', 'W', '#5ba4d4')} role="button" tabIndex={0}>
-              <div className="iv-label">Inverter · Hybrid</div>
+            <div className="sf-inverter" onClick={() => onMetric('inverterPower', 'W', '#5ba4d4')} role="button" tabIndex={0}>
+              <div className="iv-label">{t('node.inverterHybrid')}</div>
               <div className="iv-name">LUXPOWER</div>
               <div className="iv-power">{fmt(inverterNet)}<small>W</small></div>
               <div className="iv-bar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
@@ -969,9 +978,9 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
               </div>
             </div>
 
-            <button className="sf-battery-node" type="button" onClick={() => onMetric('batteryFlow', 'Battery Flow', 'W', '#c99318')}>
+            <button className="sf-battery-node" type="button" onClick={() => onMetric('batteryFlow', 'W', '#c99318')}>
               <div className="sf-label">
-                <div className="sf-label-left"><span>Battery Bank</span></div>
+                <div className="sf-label-left"><span>{t('node.batteryBank')}</span></div>
               </div>
               <div className="sf-bat-vis">
                 <div className="sf-bat-shell">
@@ -983,34 +992,34 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                 <div className="sf-bat-pct">{fmt(metrics.batterySoc)}<small>%</small></div>
               </div>
               <div className="sf-bat-rows">
-                <span>State</span><b>{batteryState}</b>
-                <span>Power</span><b>{batteryPowerSigned}</b>
-                <span>DC Volt</span><b>{fmt(metrics.batteryVoltage, 1)} V</b>
+                <span>{t('battery.state')}</span><b>{batteryStateLabel}</b>
+                <span>{t('battery.power')}</span><b>{batteryPowerSigned}</b>
+                <span>{t('battery.dcVolt')}</span><b>{fmt(metrics.batteryVoltage, 1)} V</b>
               </div>
             </button>
 
             <Node
               className="load"
-              label="Home Load"
+              label={t('node.homeLoad')}
               value={(load / 1000).toFixed(2)}
               unit=" kW"
-              tag="Essential"
-              sub={load > 0 ? '' : 'Idle'}
+              tag={t('node.essential')}
+              sub={load > 0 ? '' : t('node.idle')}
               glyph="house"
-              onClick={() => onMetric('loadPower', 'Home Usage', 'W', '#d44728')}
+              onClick={() => onMetric('loadPower', 'W', '#d44728')}
             />
 
-            <button className="sf-grid-node" type="button" onClick={() => onMetric('gridFlow', 'Grid Flow', 'W', '#7f858a')}>
+            <button className="sf-grid-node" type="button" onClick={() => onMetric('gridFlow', 'W', '#7f858a')}>
               <div className="sf-label">
                 <div className="sf-label-left">
                   <span className="sf-glyph tower" />
-                  <span>Grid</span>
+                  <span>{t('node.grid')}</span>
                 </div>
-                <span className={`sf-tag${gridActive ? ' online' : ''}`}>{gridActive ? 'Active' : 'Idle'}</span>
+                <span className={`sf-tag${gridActive ? ' online' : ''}`}>{gridActive ? t('node.active') : t('node.idle')}</span>
               </div>
               <div className="sf-grid-main">
                 <div className="sf-value mono">{Math.abs(Math.round(grid))}<small className="unit"> W</small></div>
-                <div className="sf-sub">{grid > 0 ? 'Exporting to grid' : grid < 0 ? 'Importing from grid' : 'Grid idle'}</div>
+                <div className="sf-sub">{grid > 0 ? t('grid.exporting') : grid < 0 ? t('grid.importing') : t('grid.idle')}</div>
               </div>
               <div className="sf-grid-meta">
                 <span>{fmt(metrics.gridVoltage, 1)} V</span>
@@ -1022,9 +1031,9 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
 
           <div className="sf-status-bar">
             <div className="left">
-              <span>BMS Charge <b>{metrics.bmsChargeStatus || 'OK'}</b></span>
-              <span>BMS Discharge <b>{metrics.bmsDischargeStatus || 'OK'}</b></span>
-              <span>State <b>{metrics.inverterState || '--'}</b></span>
+              <span>{t('bms.charge')} <b>{metrics.bmsChargeStatus || 'OK'}</b></span>
+              <span>{t('bms.discharge')} <b>{metrics.bmsDischargeStatus || 'OK'}</b></span>
+              <span>{t('bms.state')} <b>{metrics.inverterState || '--'}</b></span>
             </div>
             <div className="right mono">
               PV1 <b>{fmt(metrics.pv1Voltage, 1)} V</b> · PV2 <b>{fmt(metrics.pv2Voltage, 1)} V</b> |
@@ -1037,37 +1046,37 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
         <aside className="sf-side">
           <section className="sf-card">
             <div className="sf-card-head">
-              <span className="sf-card-title">Now</span>
-              <small className="sf-card-link">Live</small>
+              <span className="sf-card-title">{t('tiles.now')}</span>
+              <small className="sf-card-link">{t('status.live')}</small>
             </div>
             <div className="sf-tiles">
-              <div className="sf-tile" onClick={() => onMetric('pvPower', 'Solar Output', 'W', '#38a34b')}>
+              <div className="sf-tile" onClick={() => onMetric('pvPower', 'W', '#38a34b')}>
                 <div className="t-head">
-                  <div className="t-lab">Production</div>
+                  <div className="t-lab">{t('tiles.production')}</div>
                   <Sun size={14} className="t-ico" style={{ color: 'var(--sf-solar)' }} />
                 </div>
                 <div className="t-val mono">{(pv / 1000).toFixed(2)}<span className="unit">kW</span></div>
                 <div className="t-bar"><div className="fill" style={{ width: `${Math.min(100, pv / 80)}%`, background: 'var(--sf-solar)' }} /></div>
               </div>
-              <div className="sf-tile" onClick={() => onMetric('loadPower', 'Home Usage', 'W', '#d44728')}>
+              <div className="sf-tile" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
                 <div className="t-head">
-                  <div className="t-lab">Consumption</div>
+                  <div className="t-lab">{t('tiles.consumption')}</div>
                   <Home size={14} className="t-ico" style={{ color: 'var(--sf-load)' }} />
                 </div>
                 <div className="t-val mono">{(load / 1000).toFixed(2)}<span className="unit">kW</span></div>
                 <div className="t-bar"><div className="fill" style={{ width: `${Math.min(100, load / 60)}%`, background: 'var(--sf-load)' }} /></div>
               </div>
-              <div className="sf-tile" onClick={() => onMetric('batteryFlow', 'Battery Flow', 'W', '#c99318')}>
+              <div className="sf-tile" onClick={() => onMetric('batteryFlow', 'W', '#c99318')}>
                 <div className="t-head">
-                  <div className="t-lab">To Battery</div>
+                  <div className="t-lab">{t('tiles.toBattery')}</div>
                   <BatteryCharging size={14} className="t-ico" style={{ color: 'var(--sf-battery)' }} />
                 </div>
                 <div className="t-val mono">{(Math.max(0, -battery) / 1000).toFixed(2)}<span className="unit">kW</span></div>
                 <div className="t-bar"><div className="fill" style={{ width: `${Math.min(100, Math.max(0, -battery) / 50)}%`, background: 'var(--sf-battery)' }} /></div>
               </div>
-              <div className="sf-tile" onClick={() => onMetric('gridFlow', 'Grid Flow', 'W', '#7f858a')}>
+              <div className="sf-tile" onClick={() => onMetric('gridFlow', 'W', '#7f858a')}>
                 <div className="t-head">
-                  <div className="t-lab">Grid Net</div>
+                  <div className="t-lab">{t('tiles.gridNet')}</div>
                   <Zap size={14} className="t-ico" style={{ color: grid === 0 ? 'var(--sf-ink-3)' : 'var(--sf-idle)' }} />
                 </div>
                 <div className="t-val mono" style={{ color: grid === 0 ? 'var(--sf-ink-3)' : 'inherit' }}>
@@ -1080,31 +1089,31 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
 
           <section className="sf-card">
             <div className="sf-card-head">
-              <span className="sf-card-title">System Summary</span>
-              <small className="sf-card-link">Today · Total</small>
+              <span className="sf-card-title">{t('summary.title')}</span>
+              <small className="sf-card-link">{t('summary.todayTotal')}</small>
             </div>
             <div className="sf-stat-row">
-              <span className="lab">Solar Output</span>
+              <span className="lab">{t('summary.solarOutput')}</span>
               <span className="val solar-c mono">{fmt(metrics.pvEnergyToday, 1)}<span className="unit"> kWh</span></span>
             </div>
             <div className="sf-stat-row">
-              <span className="lab">Home Usage</span>
+              <span className="lab">{t('summary.homeUsage')}</span>
               <span className="val load-c mono">{fmt(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday, 1)}<span className="unit"> kWh</span></span>
             </div>
             <div className="sf-stat-row">
-              <span className="lab">Battery Cycle</span>
+              <span className="lab">{t('summary.batteryCycle')}</span>
               <span className="val battery-c mono">{fmt(metrics.batteryChargeEnergyToday, 1)} <span className="sep">/</span> {fmt(metrics.batteryDischargeEnergyToday, 1)}<span className="unit"> kWh</span></span>
             </div>
             <div className="sf-stat-row">
-              <span className="lab">Grid Import</span>
+              <span className="lab">{t('summary.gridImport')}</span>
               <span className="val mono">{fmt(metrics.importEnergyToday, 1)}<span className="unit"> kWh</span></span>
             </div>
             <div className="sf-stat-row">
-              <span className="lab">Grid Export</span>
+              <span className="lab">{t('summary.gridExport')}</span>
               <span className="val solar-c mono">{fmt(metrics.exportEnergyToday, 1)}<span className="unit"> kWh</span></span>
             </div>
             <div className="sf-stat-row">
-              <span className="lab">Self-Sufficiency</span>
+              <span className="lab">{t('summary.selfSufficiency')}</span>
               <span className="val mono" style={{ color: 'var(--sf-solar)' }}>{fmt(selfSufficiency, 0)}<span className="unit">%</span></span>
             </div>
           </section>
@@ -1115,7 +1124,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
       <div className="sf-charts-row">
         <section className="sf-chart-card" style={{ flex: '0 0 55%' }}>
           <div className="sf-card-head" style={{ alignItems: 'flex-start', marginBottom: 0 }}>
-            <div className="sf-card-title">Energy History · Today</div>
+            <div className="sf-card-title">{t('title.historyToday')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <button className="sf-nav-day-btn" onClick={() => setSelectedDate(d => addDays(d, -1))}><ChevronLeft size={13} /></button>
               <input
@@ -1129,16 +1138,16 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                 }}
               />
               <button className="sf-nav-day-btn" onClick={() => setSelectedDate(d => addDays(d, 1))} disabled={isToday(selectedDate)}><ChevronRight size={13} /></button>
-              <button className="sf-expand-btn" onClick={() => setOpenChart('today')} title="Expand"><Maximize2 size={13} /></button>
+              <button className="sf-expand-btn" onClick={() => setOpenChart('today')} title={t('common.expand')}><Maximize2 size={13} /></button>
             </div>
           </div>
           <div className="sf-now-strip">
             {[
-              { key: 'solar',   color: 'var(--sf-solar)',   label: 'Solar',   val: `${(pv / 1000).toFixed(2)} kW` },
-              { key: 'battery', color: 'var(--sf-battery)', label: 'Battery', val: `${(battery / -1000).toFixed(2)} kW` },
-              { key: 'load',    color: 'var(--sf-load)',    label: 'Home',    val: `${(load / 1000).toFixed(2)} kW` },
-              { key: 'grid',    color: 'var(--sf-idle)',    label: 'Grid',    val: `${Math.abs(Math.round(grid))} W` },
-              { key: 'soc',     color: '#06b6d4',           label: 'SOC',     val: `${n(metrics.batterySoc)}%` },
+              { key: 'solar',   color: 'var(--sf-solar)',   label: t('chart.solar'),   val: `${(pv / 1000).toFixed(2)} kW` },
+              { key: 'battery', color: 'var(--sf-battery)', label: t('chart.battery'), val: `${(battery / -1000).toFixed(2)} kW` },
+              { key: 'load',    color: 'var(--sf-load)',    label: t('chart.home'),    val: `${(load / 1000).toFixed(2)} kW` },
+              { key: 'grid',    color: 'var(--sf-idle)',    label: t('chart.grid'),    val: `${Math.abs(Math.round(grid))} W` },
+              { key: 'soc',     color: '#06b6d4',           label: t('chart.soc'),     val: `${n(metrics.batterySoc)}%` },
             ].map(item => (
               <div
                 key={item.key}
@@ -1155,11 +1164,11 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
 
         <section className="sf-chart-card" style={{ flex: 1 }}>
           <div className="sf-card-head" style={{ alignItems: 'center', marginBottom: 0 }}>
-            <div className="sf-card-title">Energy History · Trend</div>
+            <div className="sf-card-title">{t('title.historyTrend')}</div>
             <div className="sf-period-toggle">
               {(['day', 'month', 'year'] as TrendPeriod[]).map(p => (
                 <button key={p} className={trendPeriod === p ? 'active' : ''} onClick={() => setTrendPeriod(p)}>
-                  {p === 'day' ? 'Day' : p === 'month' ? 'Month' : 'Year'}
+                  {t(`period.${p}`)}
                 </button>
               ))}
             </div>
@@ -1175,7 +1184,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
 
       {/* ── Expanded today chart modal ── */}
       {openChart === 'today' && (
-        <ChartModal title="Energy History · Today" onClose={() => setOpenChart(null)}>
+        <ChartModal title={t('title.historyToday')} onClose={() => setOpenChart(null)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12, marginBottom: 4 }}>
             <button className="sf-nav-day-btn" onClick={() => setSelectedDate(d => addDays(d, -1))}><ChevronLeft size={13} /></button>
             <input
@@ -1187,11 +1196,11 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
           </div>
           <div className="sf-now-strip" style={{ marginTop: 8 }}>
             {[
-              { key: 'solar',   color: 'var(--sf-solar)',   label: 'Solar',   val: `${(pv / 1000).toFixed(2)} kW` },
-              { key: 'battery', color: 'var(--sf-battery)', label: 'Battery', val: `${(battery / -1000).toFixed(2)} kW` },
-              { key: 'load',    color: 'var(--sf-load)',    label: 'Home',    val: `${(load / 1000).toFixed(2)} kW` },
-              { key: 'grid',    color: 'var(--sf-idle)',    label: 'Grid',    val: `${Math.abs(Math.round(grid))} W` },
-              { key: 'soc',     color: '#06b6d4',           label: 'SOC',     val: `${n(metrics.batterySoc)}%` },
+              { key: 'solar',   color: 'var(--sf-solar)',   label: t('chart.solar'),   val: `${(pv / 1000).toFixed(2)} kW` },
+              { key: 'battery', color: 'var(--sf-battery)', label: t('chart.battery'), val: `${(battery / -1000).toFixed(2)} kW` },
+              { key: 'load',    color: 'var(--sf-load)',    label: t('chart.home'),    val: `${(load / 1000).toFixed(2)} kW` },
+              { key: 'grid',    color: 'var(--sf-idle)',    label: t('chart.grid'),    val: `${Math.abs(Math.round(grid))} W` },
+              { key: 'soc',     color: '#06b6d4',           label: t('chart.soc'),     val: `${n(metrics.batterySoc)}%` },
             ].map(item => (
               <div
                 key={item.key}

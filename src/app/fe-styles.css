@@ -3324,6 +3324,22 @@ body:has(.dashboard) {
     flex-shrink: 0;
   }
 
+  /* Header action cluster — keep all four controls uniform, round and tight. */
+  .sfm-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sfm-actions .sfm-circle-btn,
+  .sfm-actions .tsw-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    font-size: 15px;
+    box-shadow: none;
+    flex-shrink: 0;
+  }
+
   .sfm-card {
     background: var(--sf-panel);
     margin: 0 20px 20px;

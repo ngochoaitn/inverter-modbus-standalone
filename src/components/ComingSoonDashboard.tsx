@@ -1,6 +1,8 @@
 'use client';
 
 import ThemeSwitcher, { THEME_SKINS, type ThemeSkin } from './ThemeSwitcher';
+import LanguageSwitcher from './LanguageSwitcher';
+import { useT } from '@/lib/i18n/I18nProvider';
 
 interface ComingSoonDashboardProps {
   themeSkin: ThemeSkin;
@@ -10,7 +12,9 @@ interface ComingSoonDashboardProps {
 // Placeholder shown for theme skins that are picked but not yet implemented.
 // Keeps the ThemeSwitcher reachable so the user can switch back to Solar Flow.
 export default function ComingSoonDashboard({ themeSkin, onThemeSkinChange }: ComingSoonDashboardProps) {
+  const t = useT();
   const skin = THEME_SKINS.find(s => s.id === themeSkin) ?? THEME_SKINS[0];
+  const solarName = THEME_SKINS[0].name;
 
   return (
     <div className="sf-layout">
@@ -19,11 +23,12 @@ export default function ComingSoonDashboard({ themeSkin, onThemeSkinChange }: Co
           <div>
             <div className="sf-crumbs">
               <div className="sf-status-dot" />
-              <span>Giao diện</span>
+              <span>{t('theme.ui')}</span>
             </div>
             <h1 className="sf-stage-title">{skin.name.toUpperCase()}</h1>
           </div>
           <div className="sf-topbar-actions">
+            <LanguageSwitcher />
             <ThemeSwitcher themeSkin={themeSkin} onThemeSkinChange={onThemeSkinChange} />
           </div>
         </div>
@@ -36,7 +41,7 @@ export default function ComingSoonDashboard({ themeSkin, onThemeSkinChange }: Co
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--sf-ink)' }}>{skin.name}</div>
           <div style={{ fontSize: 13, color: 'var(--sf-ink-3)', marginTop: 6 }}>
-            Giao diện này đang được phát triển. Vui lòng chọn <b>Solar Flow</b> để tiếp tục.
+            {t('theme.comingSoon', { skin: solarName })}
           </div>
         </div>
         <button
@@ -44,7 +49,7 @@ export default function ComingSoonDashboard({ themeSkin, onThemeSkinChange }: Co
           className="sf-btn sf-btn-primary"
           onClick={() => onThemeSkinChange('solar')}
         >
-          Về Solar Flow
+          {t('theme.backTo', { skin: solarName })}
         </button>
       </div>
     </div>
