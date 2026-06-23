@@ -704,7 +704,11 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 <div className="name">LUXPOWER</div>
                 <div className="val">{pw(inverterNet).value}<span className="u">{pw(inverterNet).unit} net</span></div>
                 <div className="pbar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
-                <div className="sub">{tempSub}</div>
+                <div className="sub" style={{ textAlign: 'left' }}>
+                  {(radValues.length ? [`${t('node.tempRadiator').trim()}: ${radValues.join(', ')}`] : [])}
+                  <br/>
+                  {temps.filter(x => x.key === 'bat').map(x => `${x.label}: ${fmt(x.v)}°`)}
+                </div>
               </div>
 
               <div className="vnode v2 load" onClick={() => onMetric('loadPower', 'W', '#d44728')}>
