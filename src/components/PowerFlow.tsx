@@ -382,6 +382,9 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
     dongleSn: config?.dongleSn || '',
     inverterIp: config?.inverterIp || '',
     inverterPort: String(config?.inverterPort ?? 8000),
+    pv1RatedW: String(config?.pvRatedW?.[0] || ''),
+    pv2RatedW: String(config?.pvRatedW?.[1] || ''),
+    pv3RatedW: String(config?.pvRatedW?.[2] || ''),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -409,6 +412,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
           dongleSn: form.dongleSn.trim(),
           inverterIp: form.inverterIp.trim(),
           inverterPort: Number(form.inverterPort) || 8000,
+          pvRatedW: [form.pv1RatedW, form.pv2RatedW, form.pv3RatedW].map(v => Number(v) || 0),
         }),
       });
       const data = await res.json();
@@ -460,6 +464,25 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
                 <div className="field-label-row"><label>{t('config.modbusPort')}</label></div>
                 <input type="number" value={form.inverterPort} onChange={set('inverterPort')} min={1} max={65535} />
               </div>
+            </div>
+
+            <div className="field-label-row" style={{ marginTop: 12 }}>
+              <label>{t('config.pvRated')}</label>
+            </div>
+            <div className="sf-config-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+              {([['pv1RatedW', 'PV1'], ['pv2RatedW', 'PV2'], ['pv3RatedW', 'PV3']] as const).map(([key, label]) => (
+                <div className="sf-config-field" key={key}>
+                  <div className="field-label-row"><label>{label} (Wp)</label></div>
+                  <input
+                    type="number"
+                    value={(form as any)[key]}
+                    onChange={set(key)}
+                    min={0}
+                    step={100}
+                    placeholder="0"
+                  />
+                </div>
+              ))}
             </div>
 
             {error && (
@@ -571,11 +594,22 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   // PV strings present on this inverter (power or voltage seen). With 2+ strings
   // we list each string's power; with 0–1 we just show the MPPT count.
   const pvStrings = [1, 2, 3]
-    .map(i => ({ i, power: n(metrics[`pv${i}Power`]), voltage: n(metrics[`pv${i}Voltage`]) }))
+    .map(i => ({
+      i,
+      power: n(metrics[`pv${i}Power`]),
+      voltage: n(metrics[`pv${i}Voltage`]),
+      ratedW: n(config?.pvRatedW?.[i - 1]),
+    }))
     .filter(s => s.power > 0 || s.voltage > 0);
   const pvSub = pvStrings.length >= 2
     ? pvStrings.map(s => `${pw(s.power).value}${pw(s.power).unit}`).join(' + ')
     : '1 MPPT';
+  // Show the utilisation % on a second line aligned under each string's power,
+  // but only when at least one string has a configured rated Wp.
+  const pvHasRated = pvStrings.length >= 2 && pvStrings.some(s => s.ratedW > 0);
+  // Total designed PV power (sum of configured strings) → overall utilisation %.
+  const pvTotalRatedW = [0, 1, 2].reduce((sum, i) => sum + n(config?.pvRatedW?.[i]), 0);
+  const pvTotalUtil   = pvTotalRatedW > 0 ? Math.round((pv / pvTotalRatedW) * 100) : null;
 
   // Compact temperature summary for the inverter node: the two radiator sensors
   // share one label ("Tản: 52°, 46°"); internal/battery are shown individually.
@@ -693,9 +727,25 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
 
               <div className="vnode v2 pv" onClick={() => onMetric('pvPower', 'W', '#38a34b')}>
                 <div className="gly sun"><Sun size={14} color="#fff" /></div>
-                <div className="name">{t('node.totalPv')}</div>
+                <div className="name">{t('node.totalPv')}{pvTotalUtil != null ? ` · ${pvTotalUtil}%` : ''}</div>
                 <div className="val">{pw(pv).value}<span className="u">{pw(pv).unit}</span></div>
-                <div className="sub">{pvSub}</div>
+                {pvHasRated ? (
+                  <div className="sub" style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 6, justifyContent: 'center' }}>
+                    {pvStrings.map((s, idx) => (
+                      <span key={s.i} style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 6 }}>
+                        {idx > 0 && <span style={{ opacity: 0.45 }}>+</span>}
+                        <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.2 }}>
+                          <span>{pw(s.power).value}{pw(s.power).unit}</span>
+                          {s.ratedW > 0 && (
+                            <span style={{ opacity: 0.6, fontSize: '0.85em' }}>{Math.round((s.power / s.ratedW) * 100)}%</span>
+                          )}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="sub">{pvSub}</div>
+                )}
               </div>
 
               <div className="vnode v2 bat" onClick={() => onMetric('batteryFlow', 'W', '#c99318')}>
@@ -856,6 +906,10 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const grid    = n(metrics.gridFlow);
   const load    = n(metrics.loadPower) || Math.max(pv + grid + battery, 0);
 
+  // Total designed PV power (sum of configured strings) → overall utilisation %.
+  const pvTotalRatedW = [0, 1, 2].reduce((sum, i) => sum + n(config?.pvRatedW?.[i]), 0);
+  const pvTotalUtil   = pvTotalRatedW > 0 ? Math.round((pv / pvTotalRatedW) * 100) : null;
+
   const invTotalIn  = pv + n(metrics.batteryDischargePower) + n(metrics.powerFromGrid);
   const invTotalOut = load + n(metrics.batteryChargePower) + n(metrics.epsPower);
   const inverterNet = invTotalIn - invTotalOut;
@@ -992,6 +1046,8 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                 const voltage = n(metrics[`pv${i}Voltage`]);
                 const active  = power > 0 || voltage > 0;
                 const current = voltage > 0 ? power / voltage : 0;
+                const ratedW  = n(config?.pvRatedW?.[i - 1]);
+                const util    = ratedW > 0 ? Math.round((power / ratedW) * 100) : null;
                 return (
                   <button
                     key={i} type="button"
@@ -1001,12 +1057,14 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                   >
                     <div className="sf-label">
                       <span>{t('node.pvString', { n: i })}</span>
-                      <span className="sf-tag">MPPT {i}</span>
+                      <span className="sf-tag">{util != null ? `${util}%` : `MPPT ${i}`}</span>
                     </div>
                     <div className="sf-pv-val-row">
                       <strong className="mono">{pw(power).value}<small className="unit"> {pw(power).unit}</small></strong>
                     </div>
-                    <small className="sf-sub mono">{voltage.toFixed(1)} V · {current.toFixed(2)} A</small>
+                    <small className="sf-sub mono">
+                      {voltage.toFixed(1)} V · {current.toFixed(2)} A{ratedW > 0 ? ` · ${ratedW}Wp` : ''}
+                    </small>
                   </button>
                 );
               })}
@@ -1017,7 +1075,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
               label={t('node.pvTotal')}
               value={pw(pv).value}
               unit={` ${pw(pv).unit}`}
-              tag={t('node.dc')}
+              tag={pvTotalUtil != null ? `${pvTotalUtil}%` : t('node.dc')}
               sub={pv > 0 ? '' : t('node.noSolar')}
               glyph="sun"
               onClick={() => onMetric('pvPower', 'W', '#38a34b')}
