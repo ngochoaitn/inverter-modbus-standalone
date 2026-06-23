@@ -491,7 +491,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
             <div className="sf-config-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <div className="sf-config-field">
                 <div className="field-label-row">
-                  <label>{t('config.deviceSn')} <span style={{ color: '#ef4444' }}>*</span></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>{t('config.deviceSn')} <span style={{ color: '#ef4444' }}>*</span></label>
                 </div>
                 <input type="text" value={form.deviceSn} onChange={set('deviceSn')} autoComplete="off" spellCheck={false} />
               </div>
@@ -501,7 +501,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
               </div>
               <div className="sf-config-field">
                 <div className="field-label-row">
-                  <label>{t('config.inverterIp')} <span style={{ color: '#ef4444' }}>*</span></label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>{t('config.inverterIp')} <span style={{ color: '#ef4444' }}>*</span></label>
                 </div>
                 <input type="text" value={form.inverterIp} onChange={set('inverterIp')} autoComplete="off" spellCheck={false} />
               </div>
