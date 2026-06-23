@@ -44,11 +44,42 @@ export function estimateTimeToFullMinutes(m: {
   const soh        = m.batterySoh && m.batterySoh > 0 ? m.batterySoh / 100 : 1;
   const remainingAh = capAh * soh * (100 - soc) / 100;
   const chargeAmps  = chargeW / volt;
-  console.log(`[estimateTimeToFullMinutes] soc=${soc} chargeW=${chargeW} capAh=${capAh} volt=${volt} soh=${soh} remainingAh=${remainingAh} chargeAmps=${chargeAmps}`);
   return (remainingAh / chargeAmps) * 60;
 }
 
-export function mapLuxpower(registers: Registers) {
+// Estimate minutes until the battery discharges down to its cut-off SOC (not 0% —
+// the inverter stops discharging at a configured floor). Returns undefined when not
+// discharging, already at/below the floor, or capacity is unknown. Same linear
+// caveat as the charge estimate (discharge current is assumed constant).
+export function estimateTimeToEmptyMinutes(m: {
+  batterySoc?: number;
+  batteryDischargePower?: number;
+  batteryVoltage?: number;
+  batteryCapacityAh?: number;
+  batterySoh?: number;
+  dischargeFloorSoc?: number;
+}): number | undefined {
+  const soc     = m.batterySoc ?? 0;
+  const dischW  = m.batteryDischargePower ?? 0;
+  const capAh   = m.batteryCapacityAh ?? 0;
+  const volt    = m.batteryVoltage ?? 0;
+  const floor   = m.dischargeFloorSoc ?? 0;
+  if (dischW <= 0 || capAh <= 0 || volt <= 0 || soc <= floor) return undefined;
+
+  const soh         = m.batterySoh && m.batterySoh > 0 ? m.batterySoh / 100 : 1;
+  const remainingAh = capAh * soh * (soc - floor) / 100;
+  const dischAmps   = dischW / volt;
+  return (remainingAh / dischAmps) * 60;
+}
+
+// Optional manual overrides for the discharge cut-off SOC, used when the inverter's
+// hold registers can't be read. 0/undefined means "fall back to register/default".
+export interface MapOptions {
+  socFloorOnGrid?: number;
+  socFloorOffGrid?: number;
+}
+
+export function mapLuxpower(registers: Registers, opts: MapOptions = {}) {
   const r = registers;
 
   // Sum all available PV string powers (reg 7-9 = PV1-3, reg 220-222 = PV4-6)
@@ -75,6 +106,16 @@ export function mapLuxpower(registers: Registers) {
   };
 
   const status = raw(r, 'input', 0) ?? 0;
+
+  // Grid presence drives which discharge floor applies: on-grid stops at H_EOD_SOC
+  // (hold 105), off-grid/EPS stops at the lower H_SOC_LOW_LIMIT_FOR_EPS_DISCHG
+  // (hold 125). A near-zero grid voltage means the inverter has dropped to EPS.
+  const gridV = (raw(r, 'input', 12) ?? 0) * 0.1;
+  const gridConnected = gridV > 50;
+  const override = (v?: number) => (typeof v === 'number' && v > 0 ? v : undefined);
+  const dischargeCutoffOnGrid  = override(opts.socFloorOnGrid)  ?? raw(r, 'hold', 105) ?? 20;
+  const dischargeCutoffOffGrid = override(opts.socFloorOffGrid) ?? raw(r, 'hold', 125) ?? 15;
+  const dischargeFloorSoc = gridConnected ? dischargeCutoffOnGrid : dischargeCutoffOffGrid;
 
   // Temperatures are plain °C and can read sub-zero, so interpret as signed.
   // Missing registers stay undefined so the UI shows "--" instead of a fake 0°C.
@@ -131,6 +172,25 @@ export function mapLuxpower(registers: Registers) {
         batteryVoltage:     (raw(r, 'input', 4) ?? 0) * 0.1,
         batteryCapacityAh:  raw(r, 'input', 97),
         batterySoh:         ((raw(r, 'input', 5) ?? 0) >> 8) & 0xFF,
+      });
+    },
+
+    // Discharge cut-off SOC (%) the bank stops at, and which one is currently active.
+    gridConnected,
+    dischargeCutoffOnGrid,
+    dischargeCutoffOffGrid,
+    dischargeFloorSoc,
+
+    // Estimated minutes until the battery reaches its active discharge floor while
+    // discharging (undefined when idle/charging/at-floor/unknown capacity).
+    get batteryMinutesToEmpty(): number | undefined {
+      return estimateTimeToEmptyMinutes({
+        batterySoc:            (raw(r, 'input', 5) ?? 0) & 0xFF,
+        batteryDischargePower: raw(r, 'input', 11),
+        batteryVoltage:        (raw(r, 'input', 4) ?? 0) * 0.1,
+        batteryCapacityAh:     raw(r, 'input', 97),
+        batterySoh:            ((raw(r, 'input', 5) ?? 0) >> 8) & 0xFF,
+        dischargeFloorSoc,
       });
     },
 

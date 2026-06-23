@@ -18,7 +18,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW } = body;
+  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid } = body;
 
   if (!deviceSn?.trim() || !inverterIp?.trim()) {
     return NextResponse.json({ error: 'deviceSn and inverterIp are required' }, { status: 400 });
@@ -32,12 +32,20 @@ export async function POST(req: NextRequest) {
     return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
   });
 
+  // Manual discharge-floor overrides (%, 0 = use the inverter's hold register / default).
+  const floor = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 && n <= 100 ? Math.round(n) : 0;
+  };
+
   const config = {
     deviceSn: String(deviceSn).trim(),
     dongleSn: String(dongleSn ?? '').trim(),
     inverterIp: String(inverterIp).trim(),
     inverterPort: Number(inverterPort) || 8000,
     pvRatedW: pvRated,
+    socFloorOnGrid: floor(socFloorOnGrid),
+    socFloorOffGrid: floor(socFloorOffGrid),
   };
 
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(

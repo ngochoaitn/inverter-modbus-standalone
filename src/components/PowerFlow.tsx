@@ -28,6 +28,12 @@ function fmt(value: any, digits = 0) {
   return digits > 0 ? num.toFixed(digits) : Math.round(num).toString();
 }
 
+// Compact "~Xh Ym" / "~Ym" label for a duration in minutes; null when not positive.
+function fmtDuration(mins: number): string | null {
+  if (!(mins > 0)) return null;
+  return mins >= 60 ? `~${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : `~${Math.round(mins)}m`;
+}
+
 // Only surface temperature sensors the inverter actually reports — some models
 // leave internal/battery registers empty, so we hide whatever has no reading.
 function tempReadings(metrics: any, t: (k: string) => string) {
@@ -385,6 +391,8 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
     pv1RatedW: String(config?.pvRatedW?.[0] || ''),
     pv2RatedW: String(config?.pvRatedW?.[1] || ''),
     pv3RatedW: String(config?.pvRatedW?.[2] || ''),
+    socFloorOnGrid: String(config?.socFloorOnGrid || ''),
+    socFloorOffGrid: String(config?.socFloorOffGrid || ''),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -413,6 +421,8 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
           inverterIp: form.inverterIp.trim(),
           inverterPort: Number(form.inverterPort) || 8000,
           pvRatedW: [form.pv1RatedW, form.pv2RatedW, form.pv3RatedW].map(v => Number(v) || 0),
+          socFloorOnGrid: Number(form.socFloorOnGrid) || 0,
+          socFloorOffGrid: Number(form.socFloorOffGrid) || 0,
         }),
       });
       const data = await res.json();
@@ -483,6 +493,20 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
                   />
                 </div>
               ))}
+            </div>
+
+            <div className="field-label-row" style={{ marginTop: 12 }}>
+              <label>{t('config.socFloor')}</label>
+            </div>
+            <div className="sf-config-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="sf-config-field">
+                <div className="field-label-row"><label>{t('config.socFloorOnGrid')}</label></div>
+                <input type="number" value={form.socFloorOnGrid} onChange={set('socFloorOnGrid')} min={0} max={100} placeholder="20" />
+              </div>
+              <div className="sf-config-field">
+                <div className="field-label-row"><label>{t('config.socFloorOffGrid')}</label></div>
+                <input type="number" value={form.socFloorOffGrid} onChange={set('socFloorOffGrid')} min={0} max={100} placeholder="15" />
+              </div>
             </div>
 
             {error && (
@@ -584,12 +608,8 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const isBatChg    = battery < -20;
   const batteryActive = battery !== 0;
 
-  const minsToFull = n(metrics.batteryMinutesToFull);
-  const timeToFullLabel = minsToFull > 0
-    ? (minsToFull >= 60
-        ? `~${Math.floor(minsToFull / 60)}h ${Math.round(minsToFull % 60)}m`
-        : `~${Math.round(minsToFull)}m`)
-    : null;
+  const timeToFullLabel  = fmtDuration(n(metrics.batteryMinutesToFull));
+  const timeToEmptyLabel = fmtDuration(n(metrics.batteryMinutesToEmpty));
 
   // PV strings present on this inverter (power or voltage seen). With 2+ strings
   // we list each string's power; with 0–1 we just show the MPPT count.
@@ -754,7 +774,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 </div>
                 <div className="name">{t('node.battery')}</div>
                 <div className="val" style={{ color: 'var(--sf-battery)' }}>{pw(-battery).value}<span className="u">{pw(-battery).unit}</span></div>
-                <div className="sub">{soc}% · {batteryState === 'Charging' ? t('state.charging') : batteryState === 'Discharging' ? t('state.discharging') : t('state.standby')}{timeToFullLabel ? ` · ${timeToFullLabel}` : ''}</div>
+                <div className="sub">{soc}% · {batteryState === 'Charging' ? t('state.charging') : batteryState === 'Discharging' ? t('state.discharging') : t('state.standby')}{timeToFullLabel ? ` · ${timeToFullLabel}` : timeToEmptyLabel ? ` · ${timeToEmptyLabel}` : ''}</div>
               </div>
 
               <div className="vnode v2 inv" onClick={() => onMetric('inverterPower', 'W', '#5ba4d4')}>
@@ -919,13 +939,10 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const batteryAbsFmt = pw(Math.abs(battery));
   const batteryPowerSigned = `${battery < 0 ? '+' : battery > 0 ? '-' : ''}${batteryAbsFmt.value} ${batteryAbsFmt.unit}`;
 
-  // "Đầy sau ~Xh Ym" — only meaningful while charging with a known capacity.
-  const minsToFull = n(metrics.batteryMinutesToFull);
-  const timeToFullLabel = minsToFull > 0
-    ? (minsToFull >= 60
-        ? `~${Math.floor(minsToFull / 60)}h ${Math.round(minsToFull % 60)}m`
-        : `~${Math.round(minsToFull)}m`)
-    : null;
+  // ETA labels — "đầy sau" while charging, "cạn sau" (to the discharge floor) while
+  // discharging; only one is non-null at a time and only with a known capacity.
+  const timeToFullLabel  = fmtDuration(n(metrics.batteryMinutesToFull));
+  const timeToEmptyLabel = fmtDuration(n(metrics.batteryMinutesToEmpty));
 
   const lastSeen  = lastSeenAt ? new Date(lastSeenAt) : null;
   const isOnline  = lastSeen ? (now - lastSeen.getTime() < 15_000) : false;
@@ -1107,7 +1124,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                 <div className="sf-bat-pct">{fmt(metrics.batterySoc)}<small>%</small></div>
               </div>
               <div className="sf-bat-rows">
-                <span>{t('battery.state')}</span><b>{batteryStateLabel} {timeToFullLabel}</b>
+                <span>{t('battery.state')}</span><b>{batteryStateLabel} {timeToFullLabel ?? timeToEmptyLabel ?? ''}</b>
                 <span>{t('battery.power')}</span><b>{batteryPowerSigned}</b>
                 <span>{t('battery.dcVolt')}</span><b>{fmt(metrics.batteryVoltage, 1)} V</b>
               </div>

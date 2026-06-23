@@ -15,6 +15,9 @@ interface DeviceConfig {
   dongleSn: string;
   inverterIp: string;
   inverterPort: number;
+  // Optional manual discharge-floor overrides (used if hold regs 105/125 can't be read).
+  socFloorOnGrid?: number;
+  socFloorOffGrid?: number;
 }
 
 function getConfig(): DeviceConfig | null {
@@ -34,6 +37,8 @@ let lastSlowPoll     = 0;
 // Merged register snapshot — fast-poll values overwrite each cycle;
 // slow-poll values persist until the next slow poll.
 let inputSnapshot: Record<string, number> = {};
+// Hold-register snapshot (settings that rarely change — discharge cut-off SOC, etc.).
+let holdSnapshot: Record<string, number> = {};
 
 async function pollFast(config: DeviceConfig) {
   const { deviceSn, dongleSn, inverterIp, inverterPort } = config;
@@ -80,8 +85,11 @@ async function pollFast(config: DeviceConfig) {
   // Merge fast-poll values into the persistent snapshot
   Object.assign(inputSnapshot, fastInput);
 
-  const registers = { input: inputSnapshot };
-  const mapped    = mapLuxpower(registers);
+  const registers = { input: inputSnapshot, hold: holdSnapshot };
+  const mapped    = mapLuxpower(registers, {
+    socFloorOnGrid:  config.socFloorOnGrid,
+    socFloorOffGrid: config.socFloorOffGrid,
+  });
   const now       = new Date().toISOString();
 
   const latestJson = JSON.stringify({ deviceSn, dongleSn, lastSeenAt: now, metrics: mapped, registers });
@@ -131,6 +139,15 @@ async function pollSlow(config: DeviceConfig) {
       for (let i = 0; i < ntc.length; i++) inputSnapshot[String(214 + i)] = ntc[i];
     } catch {
       // Non-fatal: older firmware without NTC temperature registers
+    }
+
+    // HOLD regs 105–125 — discharge cut-off SOC: on-grid EOD (105) and off-grid/EPS
+    // low limit (125). One block covers both; settings change rarely so slow poll fits.
+    try {
+      const hold = await session.readHoldingRegisters(dongleSn, deviceSn, 105, 21);
+      for (let i = 0; i < hold.length; i++) holdSnapshot[String(105 + i)] = hold[i];
+    } catch {
+      // Non-fatal: model doesn't expose these holds → mapper falls back to defaults
     }
   } finally {
     session.close();
