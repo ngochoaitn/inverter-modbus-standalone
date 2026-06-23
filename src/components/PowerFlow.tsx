@@ -34,6 +34,41 @@ function fmtDuration(mins: number): string | null {
   return mins >= 60 ? `~${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : `~${Math.round(mins)}m`;
 }
 
+// Break the home load down into where it is being supplied from, using the hybrid
+// inverter's natural priority: PV covers the load first, then battery discharge, then
+// grid import (the remainder must be grid, by power balance). Returns null when idle.
+function loadMix(metrics: any): { solar: number; battery: number; grid: number } | null {
+  const load = n(metrics.loadPower);
+  if (load <= 0) return null;
+  const pv = n(metrics.pvPower) || (n(metrics.pv1Power) + n(metrics.pv2Power));
+  const solarW   = Math.min(pv, load);
+  let   rem      = load - solarW;
+  const batteryW = Math.min(Math.max(n(metrics.batteryDischargePower), 0), rem);
+  rem -= batteryW;
+  const gridW = Math.max(rem, 0);
+  const pct = (w: number) => Math.round((w / load) * 100);
+  return { solar: pct(solarW), battery: pct(batteryW), grid: pct(gridW) };
+}
+
+// Inline "where the load comes from" chips (sun / battery / grid), hiding 0% sources.
+function LoadMix({ mix }: { mix: { solar: number; battery: number; grid: number } }) {
+  const items = [
+    { key: 'solar',   icon: <Sun size={11} />,             pct: mix.solar,   color: 'var(--sf-solar)' },
+    { key: 'battery', icon: <BatteryCharging size={11} />, pct: mix.battery, color: 'var(--sf-battery)' },
+    { key: 'grid',    icon: <Zap size={11} />,             pct: mix.grid,    color: 'var(--sf-idle)' },
+  ].filter(x => x.pct > 0);
+  if (!items.length) return null;
+  return (
+    <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+      {items.map(x => (
+        <span key={x.key} style={{ display: 'inline-flex', gap: 2, alignItems: 'center', color: x.color }}>
+          {x.icon}{x.pct}%
+        </span>
+      ))}
+    </span>
+  );
+}
+
 // Only surface temperature sensors the inverter actually reports — some models
 // leave internal/battery registers empty, so we hide whatever has no reading.
 function tempReadings(metrics: any, t: (k: string) => string) {
@@ -792,7 +827,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 <div className="gly houseg" />
                 <div className="name">{t('node.home')}</div>
                 <div className="val" style={{ color: 'var(--sf-load)' }}>{pw(load).value}<span className="u">{pw(load).unit}</span></div>
-                <div className="sub">{t('node.essential')}</div>
+                <div className="sub">{loadMix(metrics) ? <LoadMix mix={loadMix(metrics)!} /> : t('node.essential')}</div>
               </div>
 
               <div className="vnode v2 gridn" onClick={() => onMetric('gridFlow', 'W', '#7f858a')}>
@@ -1136,7 +1171,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
               value={pw(load).value}
               unit={` ${pw(load).unit}`}
               tag={t('node.essential')}
-              sub={load > 0 ? '' : t('node.idle')}
+              sub={loadMix(metrics) ? <LoadMix mix={loadMix(metrics)!} /> : (load > 0 ? '' : t('node.idle'))}
               glyph="house"
               onClick={() => onMetric('loadPower', 'W', '#d44728')}
             />
