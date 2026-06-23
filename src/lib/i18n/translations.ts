@@ -130,7 +130,7 @@ const vi: Dict = {
     batDischarge: 'Pin xả',
     gridImport: 'Mua lưới',
   },
-  battery: { state: 'Trạng thái', power: 'Công suất', dcVolt: 'Điện áp DC' },
+  battery: { state: 'Trạng thái', power: 'Công suất', dcVolt: 'Điện áp DC', timeToFull: 'Đầy sau' },
   bms: { charge: 'BMS sạc', discharge: 'BMS xả', state: 'Trạng thái' },
   config: {
     title: 'Cấu hình hệ thống',
@@ -357,7 +357,7 @@ const en: Dict = {
     batDischarge: 'Bat Disch.',
     gridImport: 'Grid Imp.',
   },
-  battery: { state: 'State', power: 'Power', dcVolt: 'DC Volt' },
+  battery: { state: 'State', power: 'Power', dcVolt: 'DC Volt', timeToFull: 'Full in' },
   bms: { charge: 'BMS Charge', discharge: 'BMS Discharge', state: 'State' },
   config: {
     title: 'System Configuration',

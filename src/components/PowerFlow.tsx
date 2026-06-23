@@ -561,6 +561,13 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const isBatChg    = battery < -20;
   const batteryActive = battery !== 0;
 
+  const minsToFull = n(metrics.batteryMinutesToFull);
+  const timeToFullLabel = minsToFull > 0
+    ? (minsToFull >= 60
+        ? `~${Math.floor(minsToFull / 60)}h ${Math.round(minsToFull % 60)}m`
+        : `~${Math.round(minsToFull)}m`)
+    : null;
+
   // PV strings present on this inverter (power or voltage seen). With 2+ strings
   // we list each string's power; with 0–1 we just show the MPPT count.
   const pvStrings = [1, 2, 3]
@@ -697,7 +704,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 </div>
                 <div className="name">{t('node.battery')}</div>
                 <div className="val" style={{ color: 'var(--sf-battery)' }}>{pw(-battery).value}<span className="u">{pw(-battery).unit}</span></div>
-                <div className="sub">{soc}% · {batteryState === 'Charging' ? t('state.charging') : batteryState === 'Discharging' ? t('state.discharging') : t('state.standby')}</div>
+                <div className="sub">{soc}% · {batteryState === 'Charging' ? t('state.charging') : batteryState === 'Discharging' ? t('state.discharging') : t('state.standby')}{timeToFullLabel ? ` · ${timeToFullLabel}` : ''}</div>
               </div>
 
               <div className="vnode v2 inv" onClick={() => onMetric('inverterPower', 'W', '#5ba4d4')}>
@@ -857,6 +864,14 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const batteryStateLabel = battery < 0 ? t('state.charging') : battery > 0 ? t('state.discharging') : t('state.standby');
   const batteryAbsFmt = pw(Math.abs(battery));
   const batteryPowerSigned = `${battery < 0 ? '+' : battery > 0 ? '-' : ''}${batteryAbsFmt.value} ${batteryAbsFmt.unit}`;
+
+  // "Đầy sau ~Xh Ym" — only meaningful while charging with a known capacity.
+  const minsToFull = n(metrics.batteryMinutesToFull);
+  const timeToFullLabel = minsToFull > 0
+    ? (minsToFull >= 60
+        ? `~${Math.floor(minsToFull / 60)}h ${Math.round(minsToFull % 60)}m`
+        : `~${Math.round(minsToFull)}m`)
+    : null;
 
   const lastSeen  = lastSeenAt ? new Date(lastSeenAt) : null;
   const isOnline  = lastSeen ? (now - lastSeen.getTime() < 15_000) : false;
@@ -1034,7 +1049,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
                 <div className="sf-bat-pct">{fmt(metrics.batterySoc)}<small>%</small></div>
               </div>
               <div className="sf-bat-rows">
-                <span>{t('battery.state')}</span><b>{batteryStateLabel}</b>
+                <span>{t('battery.state')}</span><b>{batteryStateLabel} {timeToFullLabel}</b>
                 <span>{t('battery.power')}</span><b>{batteryPowerSigned}</b>
                 <span>{t('battery.dcVolt')}</span><b>{fmt(metrics.batteryVoltage, 1)} V</b>
               </div>

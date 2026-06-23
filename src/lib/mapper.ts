@@ -21,6 +21,33 @@ function signed16(v: number) {
   return v < 32768 ? v : v - 65536;
 }
 
+// Estimate minutes until the battery reaches 100% SOC at the current charge rate.
+// Returns undefined when not charging, already full, or capacity is unknown — the
+// UI then shows "--" instead of a misleading number.
+//
+// Note: this is a *linear* estimate. Real lithium charging tapers in the CV stage
+// (roughly 90–100% SOC), so the true time is usually a bit longer near the top.
+export function estimateTimeToFullMinutes(m: {
+  batterySoc?: number;
+  batteryChargePower?: number;
+  batteryVoltage?: number;
+  batteryCapacityAh?: number;
+  batterySoh?: number;
+}): number | undefined {
+  const soc     = m.batterySoc ?? 0;
+  const chargeW = m.batteryChargePower ?? 0;
+  const capAh   = m.batteryCapacityAh ?? 0;
+  const volt    = m.batteryVoltage ?? 0;
+  if (soc >= 100 || chargeW <= 0 || capAh <= 0 || volt <= 0) return undefined;
+
+  // Adjust usable capacity for state-of-health (pin chai) when reported.
+  const soh        = m.batterySoh && m.batterySoh > 0 ? m.batterySoh / 100 : 1;
+  const remainingAh = capAh * soh * (100 - soc) / 100;
+  const chargeAmps  = chargeW / volt;
+  console.log(`[estimateTimeToFullMinutes] soc=${soc} chargeW=${chargeW} capAh=${capAh} volt=${volt} soh=${soh} remainingAh=${remainingAh} chargeAmps=${chargeAmps}`);
+  return (remainingAh / chargeAmps) * 60;
+}
+
 export function mapLuxpower(registers: Registers) {
   const r = registers;
 
@@ -83,9 +110,29 @@ export function mapLuxpower(registers: Registers) {
     // Battery — reg 5 packs SOC in low byte, SOH in high byte
     batteryVoltage:        (raw(r, 'input', 4) ?? 0) * 0.1,
     batterySoc:            (raw(r, 'input', 5) ?? 0) & 0xFF,
+    batterySoh:            ((raw(r, 'input', 5) ?? 0) >> 8) & 0xFF,
     batteryFlow:           getBatteryFlow(),
     batteryChargePower:    raw(r, 'input', 10),
     batteryDischargePower: raw(r, 'input', 11),
+    // BMS-reported current (reg 98, signed, 0.01 A) and bank info.
+    batteryCurrent:        raw(r, 'input', 98) == null ? undefined : signed16(raw(r, 'input', 98)!) * 0.01,
+    batteryParallelNum:    raw(r, 'input', 96),
+    // Total bank capacity in Ah (reg 97). Assumed already aggregated across the
+    // pack by the BMS; cross-check against batteryParallelNum on real hardware.
+    batteryCapacityAh:     raw(r, 'input', 97),
+    batteryCycleCount:     raw(r, 'input', 106),
+
+    // Estimated minutes to a full charge at the current rate (undefined if idle
+    // /full/unknown). See estimateTimeToFullMinutes for the linear-estimate caveat.
+    get batteryMinutesToFull(): number | undefined {
+      return estimateTimeToFullMinutes({
+        batterySoc:         (raw(r, 'input', 5) ?? 0) & 0xFF,
+        batteryChargePower: raw(r, 'input', 10),
+        batteryVoltage:     (raw(r, 'input', 4) ?? 0) * 0.1,
+        batteryCapacityAh:  raw(r, 'input', 97),
+        batterySoh:         ((raw(r, 'input', 5) ?? 0) >> 8) & 0xFF,
+      });
+    },
 
     // Grid
     gridVoltage:   (raw(r, 'input', 12) ?? 0) * 0.1,

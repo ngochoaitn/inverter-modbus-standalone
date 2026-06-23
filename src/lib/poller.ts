@@ -47,9 +47,11 @@ async function pollFast(config: DeviceConfig) {
     const b1 = await session.readInputRegisters(dongleSn, deviceSn, 0, 28);
     for (let i = 0; i < b1.length; i++) fastInput[String(i)] = b1[i];
 
-    // Block 2: reg 98 — signed battery current (ESP32 fast-poll block 2)
-    const b2 = await session.readInputRegisters(dongleSn, deviceSn, 98, 1);
-    for (let i = 0; i < b2.length; i++) fastInput[String(98 + i)] = b2[i];
+    // Block 2: regs 96–98 — battery parallel count, capacity (Ah), signed current.
+    // reg 97 (I_BAT_CAPACITY) is what lets us estimate time-to-full; it changes
+    // rarely but sits next to the current register so we grab all three at once.
+    const b2 = await session.readInputRegisters(dongleSn, deviceSn, 96, 3);
+    for (let i = 0; i < b2.length; i++) fastInput[String(96 + i)] = b2[i];
 
     // Block 3: regs 170–171 — load power, load energy today
     const b3 = await session.readInputRegisters(dongleSn, deviceSn, 170, 2);
@@ -98,7 +100,8 @@ async function pollFast(config: DeviceConfig) {
   console.log(
     `[Poller] OK — ${deviceSn} SOC=${mapped.batterySoc}% PV=${mapped.pvPower}W load=${mapped.loadPower}W ` +
     `temp(in/rad/bat)=${mapped.internalTemperature ?? '--'}/${mapped.radiator1Temperature ?? '--'}/${mapped.batteryTemperature ?? '--'}°C ` +
-    `[raw r64=${s['64']} r214=${s['214'] ?? '∅'} r66=${s['66']} r67=${s['67']} r103=${s['103'] ?? '∅'} r104=${s['104'] ?? '∅'}]`,
+    `[raw r64=${s['64']} r214=${s['214'] ?? '∅'} r66=${s['66']} r67=${s['67']} r103=${s['103'] ?? '∅'} r104=${s['104'] ?? '∅'}]` + 
+    `[bat cap: batterySoh=${mapped.batterySoh}, batteryCapacityAh=${mapped.batteryCapacityAh}, batteryCycleCount=${mapped.batteryCycleCount}], batterySoc=${mapped.batterySoc}`,
   );
 }
 
@@ -111,10 +114,11 @@ async function pollSlow(config: DeviceConfig) {
     const b = await session.readInputRegisters(dongleSn, deviceSn, 28, 10);
     for (let i = 0; i < b.length; i++) inputSnapshot[String(28 + i)] = b[i];
 
-    // regs 101–104 — BMS max/min cell voltage & temperature.
-    // reg 103/104 give the real battery temperature on models that leave reg 67 at 0.
+    // regs 101–106 — BMS max/min cell voltage & temperature, FW state, cycle count.
+    // reg 103/104 give the real battery temperature on models that leave reg 67 at 0;
+    // reg 106 (cycle count) is a coarse battery-ageing indicator.
     try {
-      const bms = await session.readInputRegisters(dongleSn, deviceSn, 101, 4);
+      const bms = await session.readInputRegisters(dongleSn, deviceSn, 101, 6);
       for (let i = 0; i < bms.length; i++) inputSnapshot[String(101 + i)] = bms[i];
     } catch {
       // Non-fatal: no BMS / unsupported
