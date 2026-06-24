@@ -808,8 +808,17 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                   <div className="fill" />
                 </div>
                 <div className="name">{t('node.battery')}</div>
-                <div className="val" style={{ color: 'var(--sf-battery)' }}>{pw(-battery).value}<span className="u">{pw(-battery).unit}</span></div>
-                <div className="sub">{soc}% · {batteryState === 'Charging' ? t('state.charging') : batteryState === 'Discharging' ? t('state.discharging') : t('state.standby')}{timeToFullLabel ? ` · ${timeToFullLabel}` : timeToEmptyLabel ? ` · ${timeToEmptyLabel}` : ''}</div>
+                <div className="val" style={{ color: 'var(--sf-battery)' }}>{pw(-battery).value}
+                  <span className="u">{pw(-battery).unit}</span>
+                </div>
+                <div className="sub">
+                  {soc}% 
+                  · {temps.filter(x => x.key === 'bat').map(x => `${fmt(x.v)}°`)} 
+                  <br/>
+                  {batteryState === 'Charging' ? t('state.charging') : batteryState === 'Discharging' ? t('state.discharging') : t('state.standby')}
+                  <br/>
+                  {timeToFullLabel ? ` ${timeToFullLabel}` : timeToEmptyLabel ? ` ${timeToEmptyLabel}` : ''}
+                </div>
               </div>
 
               <div className="vnode v2 inv" onClick={() => onMetric('inverterPower', 'W', '#5ba4d4')}>
@@ -818,8 +827,6 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 <div className="pbar"><span style={{ width: `${Math.max(6, Math.min(100, pv / 80))}%` }} /></div>
                 <div className="sub" style={{ textAlign: 'left' }}>
                   {(radValues.length ? [`${t('node.tempRadiator').trim()}: ${radValues.join(', ')}`] : [])}
-                  <br/>
-                  {temps.filter(x => x.key === 'bat').map(x => `${x.label}: ${fmt(x.v)}°`)}
                 </div>
               </div>
 
