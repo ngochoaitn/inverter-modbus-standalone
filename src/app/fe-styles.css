@@ -2025,6 +2025,162 @@ body:has(.dashboard) {
 .sf-period-toggle button:last-child { border-right: none; }
 .sf-period-toggle button.active { background: var(--sf-ink); color: var(--sf-panel); }
 
+/* ── Full-width "today" chart (below the savings/trend row) ─ */
+.sf-chart-today-full { width: 100%; }
+
+/* ── Savings & ROI card ─────────────────────────────────── */
+.sf-savings-card { display: flex; flex-direction: column; }
+.sf-savings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.sf-savings-card .sf-card-title { display: inline-flex; align-items: center; }
+.sf-roi-badge { text-align: right; flex-shrink: 0; }
+.sf-roi-badge .pct {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--sf-solar);
+  font-family: "Inter", sans-serif;
+}
+.sf-roi-badge .days { font-size: 10px; color: var(--sf-ink-3); margin-top: 1px; }
+
+.sf-savings-stats {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.sf-savings-stats .item { display: flex; flex-direction: column; gap: 2px; }
+.sf-savings-stats .lab {
+  font-size: 10px;
+  color: var(--sf-ink-3);
+  letter-spacing: 0.03em;
+}
+.sf-savings-stats strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sf-ink);
+  font-family: "JetBrains Mono", monospace;
+  white-space: nowrap;
+}
+.sf-savings-stats strong.big { font-size: 20px; color: var(--sf-solar); }
+
+.sf-savings-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.sf-savings-chart-title { font-size: 11px; font-weight: 600; color: var(--sf-ink-2); }
+.sf-year-nav { display: inline-flex; align-items: center; gap: 6px; }
+.sf-year-nav span { font-size: 12px; font-weight: 600; color: var(--sf-ink-2); }
+.sf-year-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--sf-line);
+  background: var(--sf-panel);
+  color: var(--sf-ink-2);
+  cursor: pointer;
+}
+.sf-year-nav button:disabled { opacity: 0.35; cursor: default; }
+
+.sf-savings-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0 24px;
+}
+.sf-savings-empty p { font-size: 12px; color: var(--sf-ink-3); line-height: 1.5; margin: 0; }
+.sf-savings-cfg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--sf-line);
+  background: var(--sf-panel);
+  color: var(--sf-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sf-savings-cfg-btn:hover { background: var(--sf-line); }
+
+/* ── Tariff editor (in config modal) ───────────────────── */
+.sf-tier-list { display: flex; flex-direction: column; gap: 6px; }
+.sf-tier-row, .sf-band-row { display: flex; align-items: center; gap: 8px; }
+.sf-tier-range {
+  flex: 0 0 96px;
+  font-size: 11px;
+  color: var(--sf-ink-3);
+  white-space: nowrap;
+}
+.sf-band-name {
+  flex: 0 0 96px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sf-ink-2);
+}
+.sf-band-ranges { flex: 1 1 auto; min-width: 0; }
+.sf-tier-price { flex: 1 1 auto; min-width: 0; }
+/* High specificity + explicit width so the number input's wide intrinsic size
+   can't override the narrow "Đến (kWh)" column. */
+.sf-tier-list input.sf-tier-to {
+  flex: 0 0 56px;
+  width: 56px;
+  min-width: 0;
+}
+.sf-tier-list input {
+  padding: 6px 8px;
+  border: 1px solid var(--sf-line);
+  background: var(--sf-panel);
+  color: var(--sf-ink);
+  font-size: 13px;
+  font-family: "JetBrains Mono", monospace;
+}
+.sf-tier-list input:disabled { opacity: 0.5; }
+.sf-tier-unit { font-size: 11px; color: var(--sf-ink-3); flex-shrink: 0; }
+.sf-tier-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 1px solid var(--sf-line);
+  background: var(--sf-panel);
+  color: var(--sf-ink-3);
+  cursor: pointer;
+}
+.sf-tier-del:hover { color: #ef4444; border-color: #ef4444; }
+.sf-tier-add {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 6px 12px;
+  border: 1px dashed var(--sf-line);
+  background: transparent;
+  color: var(--sf-ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sf-tier-hint { font-size: 11px; color: var(--sf-ink-3); line-height: 1.5; }
+
+/* Inside the mobile dashboard the savings card mirrors the .sfm-chart-card
+   spacing; on desktop it sits flush in the charts grid (no extra margin). */
+.sf-mobile .sf-savings-card {
+  margin: 0 12px 16px;
+  padding: 14px 12px 10px;
+  border-radius: 12px;
+}
+
 .sf-expand-btn {
   display: inline-flex;
   align-items: center;

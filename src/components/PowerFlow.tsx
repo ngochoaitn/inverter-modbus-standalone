@@ -14,6 +14,7 @@ import LanguageSwitcher from './LanguageSwitcher';
 import PowerUnitSwitcher from './PowerUnitSwitcher';
 import { useT } from '@/lib/i18n/I18nProvider';
 import { usePowerUnit } from '@/lib/prefs/PowerUnitProvider';
+import { DEFAULT_PRICING, normalizePricing, type PricingType, type Tier, type TouBand } from '@/lib/pricing';
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -32,6 +33,38 @@ function fmt(value: any, digits = 0) {
 function fmtDuration(mins: number): string | null {
   if (!(mins > 0)) return null;
   return mins >= 60 ? `~${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : `~${Math.round(mins)}m`;
+}
+
+// Vietnamese money: ≥ 1tr → "~4,0 tr đ", ≥ 1k → "~126.802 đ" (thousands grouped
+// with '.'). `tilde` adds the "≈" prefix used on the headline figures.
+function fmtMoney(value: any, tilde = true): string {
+  const num = Math.round(n(value));
+  const pre = tilde ? '~' : '';
+  if (Math.abs(num) >= 1_000_000) {
+    const tr = num / 1_000_000;
+    return `${pre}${tr.toFixed(tr >= 10 ? 0 : 1).replace('.', ',')} tr đ`;
+  }
+  return `${pre}${num.toLocaleString('vi-VN')} đ`;
+}
+
+// Compact y-axis money tick: "6tr", "1,5tr", "500k", "0".
+function fmtMoneyAxis(value: any): string {
+  const num = n(value);
+  if (num === 0) return '0';
+  if (Math.abs(num) >= 1_000_000) return `${(num / 1_000_000).toFixed(1).replace(/[.,]0$/, '').replace('.', ',')}tr`;
+  if (Math.abs(num) >= 1_000) return `${Math.round(num / 1_000)}k`;
+  return String(Math.round(num));
+}
+
+// "8-10, 14-16" ⇄ [[8,10],[14,16]] for the time-of-use band editor.
+function rangesToText(ranges: [number, number][]): string {
+  return ranges.map(([a, b]) => `${a}-${b}`).join(', ');
+}
+function textToRanges(text: string): [number, number][] {
+  return text.split(',').map(s => s.trim()).filter(Boolean).map(s => {
+    const [a, b] = s.split('-').map(x => parseInt(x.trim(), 10));
+    return [a, b] as [number, number];
+  }).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
 }
 
 // Break the home load down into where it is being supplied from, using the hybrid
@@ -370,6 +403,137 @@ function TrendChart({ data, period, hiddenSeries, onToggle, height = 300 }: {
   );
 }
 
+// ── Savings & ROI ──────────────────────────────────────
+
+interface SavingsData {
+  configured: boolean;
+  today?: number;
+  month?: number;
+  total?: number;
+  year?: number;
+  series?: { month: number; savings: number }[];
+  roi?: { investmentCost: number; installDate: string | null; percent: number; daysRemaining: number | null } | null;
+}
+
+function useSavings(deviceSn: string | undefined, year: number, refreshKey: unknown) {
+  const [data, setData] = useState<SavingsData | null>(null);
+  useEffect(() => {
+    if (!deviceSn) return;
+    let cancelled = false;
+    fetch(`/api/savings?deviceSn=${deviceSn}&year=${year}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setData(d && typeof d === 'object' ? d : null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [deviceSn, year, refreshKey]);
+  return data;
+}
+
+// "TIẾT KIỆM & ROI" card: headline figures (today / month / total), an ROI badge,
+// and a per-month savings bar chart with year navigation. `onConfigure` opens the
+// settings modal when no tariff is set yet.
+function SavingsCard({ data, year, onYear, onConfigure }: {
+  data: SavingsData | null; year: number; onYear: (y: number) => void; onConfigure: () => void;
+}) {
+  const t = useT();
+  const thisYear = new Date().getFullYear();
+
+  const chartData = useMemo(
+    () => (data?.series ?? []).map(s => ({ label: `T${s.month}`, savings: s.savings })),
+    [data],
+  );
+  const yMax = useMemo(() => {
+    const max = Math.max(0, ...chartData.map(d => d.savings));
+    return max > 0 ? Math.ceil(max * 1.18) : 'auto';
+  }, [chartData]);
+
+  if (data && data.configured === false) {
+    return (
+      <section className="sf-chart-card sf-savings-card">
+        <div className="sf-savings-head">
+          <div className="sf-card-title"><PiggyIcon /> {t('savings.title')}</div>
+        </div>
+        <div className="sf-savings-empty">
+          <p>{t('savings.notConfigured')}</p>
+          <button type="button" className="sf-savings-cfg-btn" onClick={onConfigure}>
+            <Settings size={14} /> {t('savings.configure')}
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const roi = data?.roi;
+
+  return (
+    <section className="sf-chart-card sf-savings-card">
+      <div className="sf-savings-head">
+        <div className="sf-card-title"><PiggyIcon /> {t('savings.title')}</div>
+        {roi && (
+          <div className="sf-roi-badge">
+            <div className="pct">{t('savings.roiDone')} {roi.percent}%</div>
+            {roi.daysRemaining != null && roi.daysRemaining > 0 && (
+              <div className="days">{t('savings.remaining')} ~{roi.daysRemaining.toLocaleString('vi-VN')} {t('savings.days')}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="sf-savings-stats">
+        <div className="item">
+          <span className="lab">{t('savings.today')}</span>
+          <strong className="big">{fmtMoney(data?.today)}</strong>
+        </div>
+        <div className="item">
+          <span className="lab">{t('savings.month')}</span>
+          <strong>{fmtMoney(data?.month)}</strong>
+        </div>
+        <div className="item">
+          <span className="lab">{t('savings.total')}</span>
+          <strong>{fmtMoney(data?.total)}</strong>
+        </div>
+      </div>
+
+      <div className="sf-savings-chart-head">
+        <span className="sf-savings-chart-title">{t('savings.monthlyHistory')}</span>
+        <div className="sf-year-nav">
+          <button type="button" onClick={() => onYear(year - 1)}><ChevronLeft size={13} /></button>
+          <span className="mono">{year}</span>
+          <button type="button" onClick={() => onYear(year + 1)} disabled={year >= thisYear}><ChevronRight size={13} /></button>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={chartData} margin={{ top: 6, right: 4, left: 0, bottom: 0 }} barCategoryGap="28%">
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--sf-line)" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--sf-ink-3)', fontFamily: 'JetBrains Mono,monospace' }} tickLine={false} axisLine={{ stroke: 'var(--sf-line)' }} interval={0} />
+          <YAxis domain={[0, yMax as any]} tick={{ fontSize: 9, fill: 'var(--sf-ink-3)', fontFamily: 'JetBrains Mono,monospace' }} axisLine={false} tickLine={false} width={42} tickFormatter={fmtMoneyAxis} />
+          <Tooltip
+            cursor={{ fill: 'var(--sf-line)', opacity: 0.5 }}
+            contentStyle={{ background: 'var(--sf-panel)', border: '1px solid var(--sf-line)', borderRadius: 4, fontSize: 11, padding: '6px 10px' }}
+            labelFormatter={(l: any) => `${l}/${year}`}
+            formatter={(v: any) => [fmtMoney(v, false), t('savings.saved')]}
+          />
+          <Bar dataKey="savings" fill="#38a34b" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+        </BarChart>
+      </ResponsiveContainer>
+    </section>
+  );
+}
+
+function PiggyIcon() {
+  // Inline piggy-bank glyph (lucide has no piggy in this set's import list).
+  return (
+    <span style={{ display: 'inline-flex', color: 'var(--sf-solar)', marginRight: 2, verticalAlign: '-2px' }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.4-1.5 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z" />
+        <path d="M2 9v1c0 1.1.9 2 2 2h1" />
+        <path d="M16 11h0" />
+      </svg>
+    </span>
+  );
+}
+
 // ── Chart Modal ────────────────────────────────────────
 
 function ChartModal({ title, onClose, children }: any) {
@@ -428,9 +592,34 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
     pv3RatedW: String(config?.pvRatedW?.[2] || ''),
     socFloorOnGrid: String(config?.socFloorOnGrid || ''),
     socFloorOffGrid: String(config?.socFloorOffGrid || ''),
+    investmentCost: String(config?.investmentCost || ''),
+    installDate: String(config?.installDate || ''),
   });
+  // Electricity tariff (one of two shapes). Seed from saved config or defaults.
+  const initialPricing = useMemo(
+    () => (config?.pricing ? normalizePricing(config.pricing) : DEFAULT_PRICING),
+    [config],
+  );
+  const [pricingType, setPricingType] = useState<PricingType>(initialPricing.type);
+  const [tiers, setTiers] = useState<Tier[]>(initialPricing.tiers);
+  const [bands, setBands] = useState<TouBand[]>(initialPricing.tou.bands);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const setTier = (i: number, key: 'to' | 'price', v: string) =>
+    setTiers(ts => ts.map((t, j) => j === i ? { ...t, [key]: key === 'to' ? (v === '' ? null : Number(v)) : Number(v) || 0 } : t));
+  const addTier = () => setTiers(ts => {
+    const last = ts[ts.length - 1];
+    // Open the previously-final tier and append a new ∞ tier after it.
+    const opened = ts.map((t, j) => j === ts.length - 1 && t.to == null ? { ...t, to: 0 } : t);
+    return [...opened, { to: null, price: last?.price ?? 0 }];
+  });
+  const removeTier = (i: number) => setTiers(ts => ts.length <= 1 ? ts
+    : ts.filter((_, j) => j !== i).map((t, j, arr) => j === arr.length - 1 ? { ...t, to: null } : t));
+  const setBand = (key: TouBand['key'], field: 'price' | 'ranges', v: string) =>
+    setBands(bs => bs.map(b => b.key === key
+      ? { ...b, ...(field === 'price' ? { price: Number(v) || 0 } : { ranges: textToRanges(v) }) }
+      : b));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -458,6 +647,9 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
           pvRatedW: [form.pv1RatedW, form.pv2RatedW, form.pv3RatedW].map(v => Number(v) || 0),
           socFloorOnGrid: Number(form.socFloorOnGrid) || 0,
           socFloorOffGrid: Number(form.socFloorOffGrid) || 0,
+          pricing: { type: pricingType, tiers, tou: { bands } },
+          investmentCost: Number(form.investmentCost) || 0,
+          installDate: form.installDate,
         }),
       });
       const data = await res.json();
@@ -544,6 +736,87 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
               </div>
             </div>
 
+            {/* ── Electricity tariff ── */}
+            <div className="field-label-row" style={{ marginTop: 16 }}>
+              <label>{t('pricing.title')}</label>
+            </div>
+            <div className="sf-period-toggle" style={{ marginBottom: 10 }}>
+              {(['tiered', 'tou'] as PricingType[]).map(p => (
+                <button type="button" key={p} className={pricingType === p ? 'active' : ''} onClick={() => setPricingType(p)}>
+                  {t(`pricing.${p}`)}
+                </button>
+              ))}
+            </div>
+
+            {pricingType === 'tiered' ? (
+              <div className="sf-tier-list">
+                {tiers.map((tier, i) => {
+                  const from = i === 0 ? 0 : (Number(tiers[i - 1].to) || 0) + 1;
+                  const isLast = i === tiers.length - 1;
+                  return (
+                    <div className="sf-tier-row" key={i}>
+                      <span className="sf-tier-range mono">
+                        {tier.to == null ? `${from}+ kWh` : `${from}–${tier.to} kWh`}
+                      </span>
+                      <input
+                        type="number" className="sf-tier-to" min={from} placeholder="∞"
+                        value={tier.to == null ? '' : tier.to}
+                        onChange={e => setTier(i, 'to', e.target.value)}
+                        disabled={isLast}
+                        title={t('pricing.upTo')}
+                      />
+                      <input
+                        type="number" className="sf-tier-price" min={0} step={1} placeholder="đ/kWh"
+                        value={tier.price || ''}
+                        onChange={e => setTier(i, 'price', e.target.value)}
+                      />
+                      <span className="sf-tier-unit">đ</span>
+                      <button type="button" className="sf-tier-del" onClick={() => removeTier(i)} title={t('common.remove')}>
+                        <X size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
+                <button type="button" className="sf-tier-add" onClick={addTier}>+ {t('pricing.addTier')}</button>
+              </div>
+            ) : (
+              <div className="sf-tier-list">
+                {bands.map(band => (
+                  <div className="sf-band-row" key={band.key}>
+                    <span className="sf-band-name">{t(`pricing.band.${band.key}`)}</span>
+                    <input
+                      type="text" className="sf-band-ranges mono" placeholder="8-10, 14-16"
+                      value={rangesToText(band.ranges)}
+                      onChange={e => setBand(band.key, 'ranges', e.target.value)}
+                      title={t('pricing.rangesHint')}
+                    />
+                    <input
+                      type="number" className="sf-tier-price" min={0} placeholder="đ/kWh"
+                      value={band.price || ''}
+                      onChange={e => setBand(band.key, 'price', e.target.value)}
+                    />
+                    <span className="sf-tier-unit">đ</span>
+                  </div>
+                ))}
+                <div className="sf-tier-hint">{t('pricing.touNote')}</div>
+              </div>
+            )}
+
+            {/* ── Investment / ROI ── */}
+            <div className="field-label-row" style={{ marginTop: 16 }}>
+              <label>{t('pricing.roiTitle')}</label>
+            </div>
+            <div className="sf-config-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="sf-config-field">
+                <div className="field-label-row"><label>{t('pricing.investmentCost')}</label></div>
+                <input type="number" value={form.investmentCost} onChange={set('investmentCost')} min={0} step={100000} placeholder="0" />
+              </div>
+              <div className="sf-config-field">
+                <div className="field-label-row"><label>{t('pricing.installDate')}</label></div>
+                <input type="date" value={form.installDate} onChange={set('installDate')} max={dateStr(new Date())} />
+              </div>
+            </div>
+
             {error && (
               <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 4, color: '#ef4444', fontSize: 13, margin: '8px 0' }}>
                 {error}
@@ -620,6 +893,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [configOpen, setConfigOpen] = useState(false);
   const [activeMetric, setActiveMetric] = useState<any>(null);
+  const [savingsYear, setSavingsYear] = useState(() => new Date().getFullYear());
 
   const onMetric = (metric: string, unit: string, color: string) =>
     setActiveMetric({ metric, unit, color });
@@ -628,6 +902,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const weather = useWeather();
   const chartData = useEnergyChart(deviceSn, selectedDate);
   const trendData = useTrendChart(deviceSn, trendPeriod);
+  const savings = useSavings(deviceSn, savingsYear, config);
 
   const toggleTrend = (k: string) =>
     setHiddenTrend(prev => { const s = new Set(prev); s.has(k) ? s.delete(k) : s.add(k); return s; });
@@ -846,6 +1121,9 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
             </div>
           </section>
 
+          {/* Savings & ROI */}
+          <SavingsCard data={savings} year={savingsYear} onYear={setSavingsYear} onConfigure={() => setConfigOpen(true)} />
+
           {/* Today chart */}
           <section className="sfm-chart-card">
             <div className="sfm-chart-head">
@@ -953,9 +1231,11 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [activeMetric, setActiveMetric] = useState<any>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [savingsYear, setSavingsYear] = useState(() => new Date().getFullYear());
 
   const chartData = useEnergyChart(deviceSn, selectedDate);
   const trendData = useTrendChart(deviceSn, trendPeriod);
+  const savings = useSavings(deviceSn, savingsYear, config);
 
   const toggleSeries = (key: string) =>
     setHiddenSeries(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; });
@@ -1294,47 +1574,9 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
         </aside>
       </div>
 
-      {/* ── Charts row ── */}
+      {/* ── Charts: top row (Savings | Trend), then full-width Today below ── */}
       <div className="sf-charts-row">
-        <section className="sf-chart-card" style={{ flex: '0 0 55%' }}>
-          <div className="sf-card-head" style={{ alignItems: 'flex-start', marginBottom: 0 }}>
-            <div className="sf-card-title">{t('title.historyToday')}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <button className="sf-nav-day-btn" onClick={() => setSelectedDate(d => addDays(d, -1))}><ChevronLeft size={13} /></button>
-              <input
-                type="date"
-                className="sf-date-input"
-                value={dateStr(selectedDate)}
-                max={dateStr(new Date())}
-                onChange={e => {
-                  const [y, m, d] = e.target.value.split('-').map(Number);
-                  setSelectedDate(new Date(y, m - 1, d));
-                }}
-              />
-              <button className="sf-nav-day-btn" onClick={() => setSelectedDate(d => addDays(d, 1))} disabled={isToday(selectedDate)}><ChevronRight size={13} /></button>
-              <button className="sf-expand-btn" onClick={() => setOpenChart('today')} title={t('common.expand')}><Maximize2 size={13} /></button>
-            </div>
-          </div>
-          <div className="sf-now-strip">
-            {[
-              { key: 'solar',   color: 'var(--sf-solar)',   label: t('chart.solar'),   val: `${pw(pv).value} ${pw(pv).unit}` },
-              { key: 'battery', color: 'var(--sf-battery)', label: t('chart.battery'), val: `${pw(-battery).value} ${pw(-battery).unit}` },
-              { key: 'load',    color: 'var(--sf-load)',    label: t('chart.home'),    val: `${pw(load).value} ${pw(load).unit}` },
-              { key: 'grid',    color: 'var(--sf-idle)',    label: t('chart.grid'),    val: `${pw(Math.abs(grid)).value} ${pw(Math.abs(grid)).unit}` },
-              { key: 'soc',     color: '#06b6d4',           label: t('chart.soc'),     val: `${n(metrics.batterySoc)}%` },
-            ].map(item => (
-              <div
-                key={item.key}
-                className={`sf-ns-item${hiddenSeries.has(item.key) ? ' dim' : ''}`}
-                onClick={() => toggleSeries(item.key)}
-              >
-                <div className="k"><span className="dotsq" style={{ background: item.color }} />{item.label}</div>
-                <div className="v mono" style={{ color: item.color }}>{item.val}</div>
-              </div>
-            ))}
-          </div>
-          <EnergyHistoryChart data={chartData} hiddenSeries={hiddenSeries} date={selectedDate} />
-        </section>
+        <SavingsCard data={savings} year={savingsYear} onYear={setSavingsYear} onConfigure={() => setConfigOpen(true)} />
 
         <section className="sf-chart-card" style={{ flex: 1 }}>
           <div className="sf-card-head" style={{ alignItems: 'center', marginBottom: 0 }}>
@@ -1355,6 +1597,46 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
           />
         </section>
       </div>
+
+      <section className="sf-chart-card sf-chart-today-full" style={{ marginTop: 20 }}>
+        <div className="sf-card-head" style={{ alignItems: 'flex-start', marginBottom: 0 }}>
+          <div className="sf-card-title">{t('title.historyToday')}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button className="sf-nav-day-btn" onClick={() => setSelectedDate(d => addDays(d, -1))}><ChevronLeft size={13} /></button>
+            <input
+              type="date"
+              className="sf-date-input"
+              value={dateStr(selectedDate)}
+              max={dateStr(new Date())}
+              onChange={e => {
+                const [y, m, d] = e.target.value.split('-').map(Number);
+                setSelectedDate(new Date(y, m - 1, d));
+              }}
+            />
+            <button className="sf-nav-day-btn" onClick={() => setSelectedDate(d => addDays(d, 1))} disabled={isToday(selectedDate)}><ChevronRight size={13} /></button>
+            <button className="sf-expand-btn" onClick={() => setOpenChart('today')} title={t('common.expand')}><Maximize2 size={13} /></button>
+          </div>
+        </div>
+        <div className="sf-now-strip">
+          {[
+            { key: 'solar',   color: 'var(--sf-solar)',   label: t('chart.solar'),   val: `${pw(pv).value} ${pw(pv).unit}` },
+            { key: 'battery', color: 'var(--sf-battery)', label: t('chart.battery'), val: `${pw(-battery).value} ${pw(-battery).unit}` },
+            { key: 'load',    color: 'var(--sf-load)',    label: t('chart.home'),    val: `${pw(load).value} ${pw(load).unit}` },
+            { key: 'grid',    color: 'var(--sf-idle)',    label: t('chart.grid'),    val: `${pw(Math.abs(grid)).value} ${pw(Math.abs(grid)).unit}` },
+            { key: 'soc',     color: '#06b6d4',           label: t('chart.soc'),     val: `${n(metrics.batterySoc)}%` },
+          ].map(item => (
+            <div
+              key={item.key}
+              className={`sf-ns-item${hiddenSeries.has(item.key) ? ' dim' : ''}`}
+              onClick={() => toggleSeries(item.key)}
+            >
+              <div className="k"><span className="dotsq" style={{ background: item.color }} />{item.label}</div>
+              <div className="v mono" style={{ color: item.color }}>{item.val}</div>
+            </div>
+          ))}
+        </div>
+        <EnergyHistoryChart data={chartData} hiddenSeries={hiddenSeries} date={selectedDate} height={420} />
+      </section>
 
       {/* ── Expanded today chart modal ── */}
       {openChart === 'today' && (

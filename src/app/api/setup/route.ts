@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { normalizePricing } from '@/lib/pricing';
 
 export async function GET() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('deviceConfig') as
@@ -18,7 +19,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid } = body;
+  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid, pricing, investmentCost, installDate } = body;
 
   if (!deviceSn?.trim() || !inverterIp?.trim()) {
     return NextResponse.json({ error: 'deviceSn and inverterIp are required' }, { status: 400 });
@@ -38,6 +39,11 @@ export async function POST(req: NextRequest) {
     return Number.isFinite(n) && n > 0 && n <= 100 ? Math.round(n) : 0;
   };
 
+  // Electricity tariff used to value produced solar (one of two shapes). Stored
+  // normalized so the savings calculator always sees a well-formed ladder/bands.
+  // Omitted entirely until the user configures it, so the dashboard can prompt.
+  const cost = Number(investmentCost);
+
   const config = {
     deviceSn: String(deviceSn).trim(),
     dongleSn: String(dongleSn ?? '').trim(),
@@ -46,6 +52,9 @@ export async function POST(req: NextRequest) {
     pvRatedW: pvRated,
     socFloorOnGrid: floor(socFloorOnGrid),
     socFloorOffGrid: floor(socFloorOffGrid),
+    ...(pricing ? { pricing: normalizePricing(pricing) } : {}),
+    investmentCost: Number.isFinite(cost) && cost > 0 ? Math.round(cost) : 0,
+    installDate: typeof installDate === 'string' && installDate.trim() ? installDate.trim() : '',
   };
 
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(
