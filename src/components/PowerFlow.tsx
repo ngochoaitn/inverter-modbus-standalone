@@ -603,6 +603,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
   const [pricingType, setPricingType] = useState<PricingType>(initialPricing.type);
   const [tiers, setTiers] = useState<Tier[]>(initialPricing.tiers);
   const [bands, setBands] = useState<TouBand[]>(initialPricing.tou.bands);
+  const [tab, setTab] = useState<'system' | 'pricing'>('system');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -632,8 +633,8 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.deviceSn.trim()) { setError(t('config.errDeviceSn')); return; }
-    if (!form.inverterIp.trim()) { setError(t('config.errInverterIp')); return; }
+    if (!form.deviceSn.trim()) { setTab('system'); setError(t('config.errDeviceSn')); return; }
+    if (!form.inverterIp.trim()) { setTab('system'); setError(t('config.errInverterIp')); return; }
     setSaving(true); setError('');
     try {
       const res = await fetch('/api/setup', {
@@ -680,6 +681,16 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
           </div>
 
           <form onSubmit={handleSave}>
+            <div className="sf-config-tabs">
+              <button type="button" className={tab === 'system' ? 'active' : ''} onClick={() => setTab('system')}>
+                {t('config.tabSystem')}
+              </button>
+              <button type="button" className={tab === 'pricing' ? 'active' : ''} onClick={() => setTab('pricing')}>
+                {t('config.tabPricing')}
+              </button>
+            </div>
+
+            <div style={{ display: tab === 'system' ? 'block' : 'none' }}>
             <div className="sf-config-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <div className="sf-config-field">
                 <div className="field-label-row">
@@ -735,9 +746,11 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
                 <input type="number" value={form.socFloorOffGrid} onChange={set('socFloorOffGrid')} min={0} max={100} placeholder="15" />
               </div>
             </div>
+            </div>
 
+            <div style={{ display: tab === 'pricing' ? 'block' : 'none' }}>
             {/* ── Electricity tariff ── */}
-            <div className="field-label-row" style={{ marginTop: 16 }}>
+            <div className="field-label-row" style={{ marginTop: 4 }}>
               <label>{t('pricing.title')}</label>
             </div>
             <div className="sf-period-toggle" style={{ marginBottom: 10 }}>
@@ -815,6 +828,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
                 <div className="field-label-row"><label>{t('pricing.installDate')}</label></div>
                 <input type="date" value={form.installDate} onChange={set('installDate')} max={dateStr(new Date())} />
               </div>
+            </div>
             </div>
 
             {error && (

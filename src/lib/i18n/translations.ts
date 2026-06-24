@@ -135,6 +135,8 @@ const vi: Dict = {
   bms: { charge: 'BMS sạc', discharge: 'BMS xả', state: 'Trạng thái' },
   config: {
     title: 'Cấu hình hệ thống',
+    tabSystem: 'Hệ thống',
+    tabPricing: 'Giá điện & Đầu tư',
     deviceSn: 'Device SN',
     dongleSn: 'Dongle SN',
     inverterIp: 'Inverter IP',
@@ -393,6 +395,8 @@ const en: Dict = {
   bms: { charge: 'BMS Charge', discharge: 'BMS Discharge', state: 'State' },
   config: {
     title: 'System Configuration',
+    tabSystem: 'System',
+    tabPricing: 'Tariff & ROI',
     deviceSn: 'Device SN',
     dongleSn: 'Dongle SN',
     inverterIp: 'Inverter IP',
