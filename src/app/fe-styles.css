@@ -2151,6 +2151,12 @@ body:has(.dashboard) {
   align-items: center;
   gap: 8px;
 }
+.sf-manual-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto 28px;
+  align-items: center;
+  gap: 8px;
+}
 .sf-tier-range {
   font-size: 11px;
   color: var(--sf-ink-3);

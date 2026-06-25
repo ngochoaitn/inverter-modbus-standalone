@@ -19,7 +19,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid, pricing, investmentCost, installDate } = body;
+  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid, pricing, investmentCost, installDate, manualSolar } = body;
 
   if (!deviceSn?.trim() || !inverterIp?.trim()) {
     return NextResponse.json({ error: 'deviceSn and inverterIp are required' }, { status: 400 });
@@ -44,6 +44,15 @@ export async function POST(req: NextRequest) {
   // Omitted entirely until the user configures it, so the dashboard can prompt.
   const cost = Number(investmentCost);
 
+  // Manually-entered daily PV production (kWh) for days before monitoring started.
+  // Stored as a deduped, date-sorted list; the savings API fills gaps with these.
+  const manual = (Array.isArray(manualSolar) ? manualSolar : [])
+    .map((e: any) => ({ date: String(e?.date ?? '').slice(0, 10), kwh: Number(e?.kwh) }))
+    .filter((e: { date: string; kwh: number }) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && Number.isFinite(e.kwh) && e.kwh > 0);
+  const manualMap = new Map<string, number>();
+  for (const e of manual) manualMap.set(e.date, Math.round(e.kwh * 1000) / 1000);
+  const manualClean = [...manualMap.entries()].map(([date, kwh]) => ({ date, kwh })).sort((a, b) => a.date.localeCompare(b.date));
+
   const config = {
     deviceSn: String(deviceSn).trim(),
     dongleSn: String(dongleSn ?? '').trim(),
@@ -55,6 +64,7 @@ export async function POST(req: NextRequest) {
     ...(pricing ? { pricing: normalizePricing(pricing) } : {}),
     investmentCost: Number.isFinite(cost) && cost > 0 ? Math.round(cost) : 0,
     installDate: typeof installDate === 'string' && installDate.trim() ? installDate.trim() : '',
+    manualSolar: manualClean,
   };
 
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(

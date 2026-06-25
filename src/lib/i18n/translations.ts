@@ -165,6 +165,9 @@ const vi: Dict = {
     investmentCost: 'Chi phí đầu tư (đ)',
     installDate: 'Ngày lắp đặt',
     band: { low: 'Thấp điểm', normal: 'Bình thường', peak: 'Cao điểm' },
+    manualTitle: 'Sản lượng nhập tay',
+    manualNote: 'Nhập kWh PV/ngày cho những ngày chưa ghi dữ liệu (trước khi chạy hệ thống giám sát). Ngày đã có dữ liệu thật sẽ được ưu tiên.',
+    addDay: 'Thêm ngày',
   },
   savings: {
     title: 'TIẾT KIỆM & ROI',
@@ -425,6 +428,9 @@ const en: Dict = {
     investmentCost: 'Investment cost (đ)',
     installDate: 'Install date',
     band: { low: 'Off-peak', normal: 'Normal', peak: 'Peak' },
+    manualTitle: 'Manual daily output',
+    manualNote: 'Enter daily PV kWh for days that were not logged yet (before monitoring started). Real logged days take precedence.',
+    addDay: 'Add day',
   },
   savings: {
     title: 'SAVINGS & ROI',

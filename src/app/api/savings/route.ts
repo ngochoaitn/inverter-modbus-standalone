@@ -48,7 +48,20 @@ export async function GET(req: NextRequest) {
     pricing.type === 'tou' ? solar * touRate : tieredValue(monthBefore, solar, pricing.tiers);
 
   try {
-    const days = db.prepare(DAILY_SOLAR_SQL).all(deviceSn) as { day: string; solar: number }[];
+    const dbDays = db.prepare(DAILY_SOLAR_SQL).all(deviceSn) as { day: string; solar: number }[];
+
+    // Merge manually-entered daily kWh for days the inverter wasn't being logged
+    // yet. Real DB readings win on conflict; manual entries only fill the gaps.
+    const dayMap = new Map<string, number>();
+    const manualSolar: { date: string; kwh: number }[] = Array.isArray(cfg.manualSolar) ? cfg.manualSolar : [];
+    for (const m of manualSolar) {
+      const kwh = Number(m?.kwh);
+      if (typeof m?.date === 'string' && Number.isFinite(kwh) && kwh > 0) dayMap.set(m.date, kwh);
+    }
+    for (const d of dbDays) dayMap.set(d.day, Number(d.solar) || 0);
+    const days = [...dayMap.entries()]
+      .map(([day, solar]) => ({ day, solar }))
+      .sort((a, b) => a.day.localeCompare(b.day));
 
     const { today, month } = localKeys();
     const monthAccum = new Map<string, number>(); // 'YYYY-MM' → kWh so far this month

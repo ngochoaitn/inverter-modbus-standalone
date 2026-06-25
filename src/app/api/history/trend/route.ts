@@ -3,6 +3,23 @@ import db from '@/lib/db';
 
 type Period = 'day' | 'month' | 'year';
 
+// Manually-entered daily PV (kWh) saved on deviceConfig by /api/setup. Already
+// deduped/sorted there; we just validate defensively.
+function getManualSolar(): { date: string; kwh: number }[] {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('deviceConfig') as
+    | { value: string } | undefined;
+  if (!row) return [];
+  try {
+    const cfg = JSON.parse(row.value);
+    if (!Array.isArray(cfg?.manualSolar)) return [];
+    return cfg.manualSolar
+      .map((e: any) => ({ date: String(e?.date ?? ''), kwh: Number(e?.kwh) }))
+      .filter((e: { date: string; kwh: number }) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && Number.isFinite(e.kwh) && e.kwh > 0);
+  } catch {
+    return [];
+  }
+}
+
 // home: prefer homeConsumptionEnergyToday (stored by mapper since recent fix),
 // fall back to energy-balance formula for older history rows where reg 171 was 0
 // and homeConsumptionEnergyToday was not yet computed by the mapper.
@@ -107,13 +124,28 @@ export async function GET(req: NextRequest) {
     const { from, to } = dateRange(period);
     const daily = db.prepare(DAILY_SQL).all(deviceSn, from, to) as any[];
 
+    // Fold in manually-entered daily PV (kWh) for days that were not logged yet,
+    // so the savings card and this trend chart agree. Real logged days win on
+    // conflict; manual entries only add days missing from the query result.
+    const dailyByPeriod = new Map<string, any>(daily.map(r => [r.period, r]));
+    const fromDay = from.slice(0, 10);
+    const toDay = to.slice(0, 10);
+    const manual = getManualSolar();
+    for (const m of manual) {
+      if (m.date < fromDay || m.date > toDay || dailyByPeriod.has(m.date)) continue;
+      dailyByPeriod.set(m.date, {
+        period: m.date, solar: m.kwh, home: 0, batCharge: 0, batDischarge: 0, gridImport: 0,
+      });
+    }
+    const merged = [...dailyByPeriod.values()].sort((a, b) => a.period.localeCompare(b.period));
+
     let rows: any[];
     if (period === 'year') {
-      rows = groupByYear(daily);
+      rows = groupByYear(merged);
     } else if (period === 'month') {
-      rows = groupByMonth(daily);
+      rows = groupByMonth(merged);
     } else {
-      rows = daily;
+      rows = merged;
     }
 
     return NextResponse.json(rows);

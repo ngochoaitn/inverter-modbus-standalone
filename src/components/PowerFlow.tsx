@@ -603,6 +603,10 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
   const [pricingType, setPricingType] = useState<PricingType>(initialPricing.type);
   const [tiers, setTiers] = useState<Tier[]>(initialPricing.tiers);
   const [bands, setBands] = useState<TouBand[]>(initialPricing.tou.bands);
+  // Manual daily PV (kWh) for days before logging started; kwh kept as string for the input.
+  const [manualSolar, setManualSolar] = useState<{ date: string; kwh: string }[]>(
+    Array.isArray(config?.manualSolar) ? config.manualSolar.map((e: any) => ({ date: String(e?.date ?? ''), kwh: String(e?.kwh ?? '') })) : [],
+  );
   const [tab, setTab] = useState<'system' | 'pricing'>('system');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -621,6 +625,10 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
     setBands(bs => bs.map(b => b.key === key
       ? { ...b, ...(field === 'price' ? { price: Number(v) || 0 } : { ranges: textToRanges(v) }) }
       : b));
+  const addManual = () => setManualSolar(m => [...m, { date: '', kwh: '' }]);
+  const setManual = (i: number, key: 'date' | 'kwh', v: string) =>
+    setManualSolar(m => m.map((e, j) => j === i ? { ...e, [key]: v } : e));
+  const removeManual = (i: number) => setManualSolar(m => m.filter((_, j) => j !== i));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -651,6 +659,9 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
           pricing: { type: pricingType, tiers, tou: { bands } },
           investmentCost: Number(form.investmentCost) || 0,
           installDate: form.installDate,
+          manualSolar: manualSolar
+            .map(e => ({ date: e.date, kwh: Number(e.kwh) }))
+            .filter(e => e.date && Number.isFinite(e.kwh) && e.kwh > 0),
         }),
       });
       const data = await res.json();
@@ -828,6 +839,32 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
                 <div className="field-label-row"><label>{t('pricing.installDate')}</label></div>
                 <input type="date" value={form.installDate} onChange={set('installDate')} max={dateStr(new Date())} />
               </div>
+            </div>
+
+            {/* ── Manual daily PV (days before logging started) ── */}
+            <div className="field-label-row" style={{ marginTop: 16 }}>
+              <label>{t('pricing.manualTitle')}</label>
+            </div>
+            <div className="sf-tier-hint" style={{ marginBottom: 8 }}>{t('pricing.manualNote')}</div>
+            <div className="sf-tier-list">
+              {manualSolar.map((e, i) => (
+                <div className="sf-manual-row" key={i}>
+                  <input
+                    type="date" value={e.date} max={dateStr(new Date())}
+                    onChange={ev => setManual(i, 'date', ev.target.value)}
+                  />
+                  <input
+                    type="number" className="mono" min={0} step={0.1} placeholder="kWh"
+                    value={e.kwh}
+                    onChange={ev => setManual(i, 'kwh', ev.target.value)}
+                  />
+                  <span className="sf-tier-unit">kWh</span>
+                  <button type="button" className="sf-tier-del" onClick={() => removeManual(i)} title={t('common.remove')}>
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+              <button type="button" className="sf-tier-add" onClick={addManual}>+ {t('pricing.addDay')}</button>
             </div>
             </div>
 
