@@ -16,6 +16,15 @@ Dashboard theo dõi inverter hybrid LuxPower ngay tại nhà — không cần cl
 - 📡 Nhận dữ liệu đẩy từ ESP32 hoặc thiết bị ngoài (không cần kết nối trực tiếp vào inverter)
 
 ---
+### 💥 Bổ sung thêm tại fork này
+- ☀️ Hiển thị thêm % công suất đang đạt được
+- ☀️ Hiển thị thời gian dự kiến sạc đầy, dự kiến xả hết
+- ☀️ Hiển thị thêm % điện tiêu thụ đang lấy từ những nguồn nào (tấm pin, pin lưu, điện lưới)
+- ☀️ Thêm theo dõi giá trị hệ thống điện tạo ra theo bảng giá của ENV
+- 🔞 Bảo mật, riêng tư:
+  + Thêm xác thực bằng nginx (tài khoản, mật khẩu mặc định trong file .env)
+  + Bỏ việc hỏi quyền vị trí (cài đặt tọa độ dàn năng lượng thủ công)
+  + Chặn các bot tìm kiếm
 
 ## 🛠️ Phần mềm cần cài
 
