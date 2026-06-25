@@ -4300,6 +4300,22 @@ body:has(.dashboard) {
   padding-bottom: 86px;
 }
 
+/* When shown as a centered modal, cap to the viewport and scroll the form body
+   while the header (with its close button) stays pinned. Prevents the panel from
+   running off-screen when many manual-output rows are added. */
+.history-modal-backdrop .sf-config-panel {
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.history-modal-backdrop .sf-config-panel > .sf-config-head { flex-shrink: 0; }
+.history-modal-backdrop .sf-config-panel > form {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .sf-config-head {
   display: flex;
   justify-content: space-between;
