@@ -81,14 +81,41 @@ export async function GET(req: NextRequest) {
     const installDate: string | undefined = cfg.installDate || firstDay || undefined;
     let roi: any = null;
     if (investmentCost > 0) {
-      const elapsedDays = installDate
-        ? Math.max(1, Math.round((Date.now() - new Date(installDate).getTime()) / 86_400_000))
-        : Math.max(1, days.length);
-      const avgPerDay = total / elapsedDays;
       const percent = Math.min(100, Math.round((total / investmentCost) * 100));
       const remaining = Math.max(0, investmentCost - total);
-      const daysRemaining = avgPerDay > 0 ? Math.round(remaining / avgPerDay) : null;
-      roi = { investmentCost, installDate: installDate ?? null, percent, daysRemaining };
+
+      // Project the payback from the run-rate. Electricity is billed monthly (and
+      // tiered rates reset monthly), so the natural unit is a *complete* month —
+      // we drop the in-progress month, and the install month too if the system
+      // came online mid-month (a partial first month would bias the average low).
+      const installMonth = installDate ? installDate.slice(0, 7) : null;
+      const installMidMonth = !!installDate && installDate.slice(8, 10) !== '01' && installDate.slice(8, 10) !== '';
+      const completeMonths = [...monthly.entries()]
+        .filter(([mk]) => mk < month && !(installMidMonth && mk === installMonth))
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([, v]) => v);
+
+      let daysRemaining: number | null = null;
+      let basis: 'trailing12' | 'monthlyAvg' | 'dailyAvg' = 'dailyAvg';
+      if (completeMonths.length >= 12) {
+        // Full seasonal cycle available → use the trailing 12 months.
+        const last12 = completeMonths.slice(-12).reduce((s, v) => s + v, 0);
+        const perMonth = last12 / 12;
+        if (perMonth > 0) { daysRemaining = Math.round((remaining / perMonth) * 30.44); basis = 'trailing12'; }
+      } else if (completeMonths.length >= 1) {
+        const perMonth = completeMonths.reduce((s, v) => s + v, 0) / completeMonths.length;
+        if (perMonth > 0) { daysRemaining = Math.round((remaining / perMonth) * 30.44); basis = 'monthlyAvg'; }
+      }
+      if (daysRemaining == null) {
+        // Fallback: not even one complete month yet → average over elapsed days.
+        const elapsedDays = installDate
+          ? Math.max(1, Math.round((Date.now() - new Date(installDate).getTime()) / 86_400_000))
+          : Math.max(1, days.length);
+        const avgPerDay = total / elapsedDays;
+        daysRemaining = avgPerDay > 0 ? Math.round(remaining / avgPerDay) : null;
+      }
+
+      roi = { investmentCost, installDate: installDate ?? null, percent, daysRemaining, basis };
     }
 
     return NextResponse.json({
