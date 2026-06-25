@@ -2135,6 +2135,21 @@ body:has(.dashboard) {
 .sf-config-tabs button:last-child { border-right: none; }
 .sf-config-tabs button.active { background: var(--sf-ink); color: var(--sf-panel); }
 
+.sf-geo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--sf-line);
+  background: var(--sf-panel);
+  color: var(--sf-ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sf-geo-btn:hover:not(:disabled) { background: var(--sf-line); }
+.sf-geo-btn:disabled { opacity: 0.5; cursor: default; }
+
 /* ── Tariff editor (in config modal) ───────────────────── */
 /* Grid columns keep deterministic widths regardless of the number inputs'
    wide intrinsic size: range | to(56) | price(fills) | đ | delete. */

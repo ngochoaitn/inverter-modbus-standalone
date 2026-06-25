@@ -19,7 +19,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid, pricing, investmentCost, installDate, manualSolar } = body;
+  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid, pricing, investmentCost, installDate, manualSolar, weatherLat, weatherLon } = body;
 
   if (!deviceSn?.trim() || !inverterIp?.trim()) {
     return NextResponse.json({ error: 'deviceSn and inverterIp are required' }, { status: 400 });
@@ -44,6 +44,15 @@ export async function POST(req: NextRequest) {
   // Omitted entirely until the user configures it, so the dashboard can prompt.
   const cost = Number(investmentCost);
 
+  // Manual weather coordinates (override geolocation). Kept only when both are
+  // valid and in range; otherwise left null so the dashboard falls back to geo/IP.
+  const coord = (v: unknown, max: number): number | null => {
+    const num = Number(v);
+    return Number.isFinite(num) && Math.abs(num) <= max ? num : null;
+  };
+  const wLat = coord(weatherLat, 90);
+  const wLon = coord(weatherLon, 180);
+
   // Manually-entered daily PV production (kWh) for days before monitoring started.
   // Stored as a deduped, date-sorted list; the savings API fills gaps with these.
   const manual = (Array.isArray(manualSolar) ? manualSolar : [])
@@ -65,6 +74,8 @@ export async function POST(req: NextRequest) {
     investmentCost: Number.isFinite(cost) && cost > 0 ? Math.round(cost) : 0,
     installDate: typeof installDate === 'string' && installDate.trim() ? installDate.trim() : '',
     manualSolar: manualClean,
+    weatherLat: wLat,
+    weatherLon: wLon,
   };
 
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(

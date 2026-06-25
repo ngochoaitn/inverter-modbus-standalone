@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import {
-  BatteryCharging, ChevronLeft, ChevronRight, Home, Maximize2, Settings, Sun, X, Zap,
+  BatteryCharging, ChevronLeft, ChevronRight, Home, MapPin, Maximize2, Settings, Sun, X, Zap,
 } from 'lucide-react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ReferenceLine,
@@ -150,24 +150,17 @@ function WeatherGlyph({ code = 0, size = 32 }: { code?: number; size?: number })
   return <svg viewBox="0 0 32 32" width={size} height={size}><circle cx="16" cy="16" r="7" fill="#f0a93a"/><g stroke="#f0a93a" strokeWidth="1.6" strokeLinecap="round"><line x1="16" y1="3" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="29"/><line x1="3" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="29" y2="16"/><line x1="6.5" y1="6.5" x2="8.5" y2="8.5"/><line x1="23.5" y1="23.5" x2="25.5" y2="25.5"/><line x1="6.5" y1="25.5" x2="8.5" y2="23.5"/><line x1="23.5" y1="8.5" x2="25.5" y2="6.5"/></g></svg>;
 }
 
-function useWeather() {
+// Weather is fetched only when coordinates are configured in settings — there is
+// no geolocation/IP fallback. Without coords the widget stays at "--".
+function useWeather(manualLat?: number, manualLon?: number) {
+  const hasManual = Number.isFinite(manualLat) && Number.isFinite(manualLon);
   const [weather, setWeather] = useState<any>(null);
   useEffect(() => {
+    if (!hasManual) { setWeather(null); return; }
     let cancelled = false;
     async function load() {
       try {
-        let lat: number, lon: number, city = '';
-        try {
-          const pos = await new Promise<GeolocationPosition>((res, rej) =>
-            navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000 })
-          );
-          lat = pos.coords.latitude; lon = pos.coords.longitude;
-        } catch {
-          const geo = await (await fetch('https://freeipapi.com/api/json')).json();
-          if (!geo.latitude) return;
-          lat = geo.latitude; lon = geo.longitude; city = geo.cityName || '';
-        }
-        if (cancelled) return;
+        const lat = manualLat as number, lon = manualLon as number;
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weather_code,uv_index_max,shortwave_radiation_sum,sunrise,sunset&timezone=auto&forecast_days=1`;
         const wx = await (await fetch(url)).json();
         if (cancelled) return;
@@ -182,14 +175,14 @@ function useWeather() {
           code: d.weather_code?.[0] ?? 0,
           uv: (d.uv_index_max?.[0] ?? 0).toFixed(1),
           irr: ((d.shortwave_radiation_sum?.[0] ?? 0) / 3.6).toFixed(1),
-          sunset, city,
+          sunset, city: '',
         });
       } catch { /* widget stays at -- */ }
     }
     load();
     const timer = setInterval(load, 10 * 60 * 1000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, []);
+  }, [hasManual, manualLat, manualLon]);
   return weather;
 }
 
@@ -594,6 +587,8 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
     socFloorOffGrid: String(config?.socFloorOffGrid || ''),
     investmentCost: String(config?.investmentCost || ''),
     installDate: String(config?.installDate || ''),
+    weatherLat: config?.weatherLat == null ? '' : String(config.weatherLat),
+    weatherLon: config?.weatherLon == null ? '' : String(config.weatherLon),
   });
   // Electricity tariff (one of two shapes). Seed from saved config or defaults.
   const initialPricing = useMemo(
@@ -609,7 +604,27 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
   );
   const [tab, setTab] = useState<'system' | 'pricing'>('system');
   const [saving, setSaving] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
+
+  // Ask the browser for the current position (permission prompt) and fill the
+  // lat/lon fields — the only place geolocation is used now.
+  const useCurrentLocation = () => {
+    if (!('geolocation' in navigator)) { setError(t('config.geoUnsupported')); return; }
+    setLocating(true); setError('');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setForm(f => ({
+          ...f,
+          weatherLat: pos.coords.latitude.toFixed(4),
+          weatherLon: pos.coords.longitude.toFixed(4),
+        }));
+        setLocating(false);
+      },
+      () => { setError(t('config.geoDenied')); setLocating(false); },
+      { timeout: 8000, enableHighAccuracy: true },
+    );
+  };
 
   const setTier = (i: number, key: 'to' | 'price', v: string) =>
     setTiers(ts => ts.map((t, j) => j === i ? { ...t, [key]: key === 'to' ? (v === '' ? null : Number(v)) : Number(v) || 0 } : t));
@@ -662,6 +677,8 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
           manualSolar: manualSolar
             .map(e => ({ date: e.date, kwh: Number(e.kwh) }))
             .filter(e => e.date && Number.isFinite(e.kwh) && e.kwh > 0),
+          weatherLat: form.weatherLat.trim() === '' ? null : Number(form.weatherLat),
+          weatherLon: form.weatherLon.trim() === '' ? null : Number(form.weatherLon),
         }),
       });
       const data = await res.json();
@@ -755,6 +772,24 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
               <div className="sf-config-field">
                 <div className="field-label-row"><label>{t('config.socFloorOffGrid')}</label></div>
                 <input type="number" value={form.socFloorOffGrid} onChange={set('socFloorOffGrid')} min={0} max={100} placeholder="15" />
+              </div>
+            </div>
+
+            <div className="field-label-row" style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label>{t('config.weatherLocation')}</label>
+              <button type="button" className="sf-geo-btn" onClick={useCurrentLocation} disabled={locating}>
+                <MapPin size={12} /> {locating ? t('config.geoLocating') : t('config.useCurrentLocation')}
+              </button>
+            </div>
+            <div className="sf-tier-hint" style={{ marginBottom: 8 }}>{t('config.weatherHint')}</div>
+            <div className="sf-config-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="sf-config-field">
+                <div className="field-label-row"><label>{t('config.latitude')}</label></div>
+                <input type="number" value={form.weatherLat} onChange={set('weatherLat')} min={-90} max={90} step="any" placeholder="21.0278" />
+              </div>
+              <div className="sf-config-field">
+                <div className="field-label-row"><label>{t('config.longitude')}</label></div>
+                <input type="number" value={form.weatherLon} onChange={set('weatherLon')} min={-180} max={180} step="any" placeholder="105.8342" />
               </div>
             </div>
             </div>
@@ -950,7 +985,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
     setActiveMetric({ metric, unit, color });
 
   const now = useNow();
-  const weather = useWeather();
+  const weather = useWeather(config?.weatherLat, config?.weatherLon);
   const chartData = useEnergyChart(deviceSn, selectedDate);
   const trendData = useTrendChart(deviceSn, trendPeriod);
   const savings = useSavings(deviceSn, savingsYear, config);
@@ -1038,20 +1073,22 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
 
       {activeTab === 'flow' ? (
         <>
-          {/* Weather strip */}
+          {/* Weather strip — only when coordinates are configured */}
+          {weather && (
           <div className="sf-weather-mini sfm-weather">
-            <WeatherGlyph code={weather?.code ?? 0} size={16} />
+            <WeatherGlyph code={weather.code ?? 0} size={16} />
             <div className="sf-wm-temp">
               <div className="sf-wm-t">
-                {weather ? weather.tempMax : '--'}<span className="sf-wm-deg">°C</span>
-                <span className="sf-wm-min">/{weather ? weather.tempMin : '--'}°</span>
+                {weather.tempMax}<span className="sf-wm-deg">°C</span>
+                <span className="sf-wm-min">/{weather.tempMin}°</span>
               </div>
             </div>
             <div className="sf-wm-sep" />
-            <div className="sf-wm-stat"><span className="k">{t('weather.sunset')}</span><span className="v">{weather?.sunset ?? '--:--'}</span></div>
-            <div className="sf-wm-stat"><span className="k">{t('weather.uv')}</span><span className="v">{weather?.uv ?? '--'}</span></div>
-            <div className="sf-wm-stat"><span className="k">{t('weather.irrad')}</span><span className="v">{weather ? `${weather.irr} kWh/m²` : '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.sunset')}</span><span className="v">{weather.sunset ?? '--:--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.uv')}</span><span className="v">{weather.uv ?? '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.irrad')}</span><span className="v">{`${weather.irr} kWh/m²`}</span></div>
           </div>
+          )}
 
           {/* Main numbers */}
           <section className="sfm-card main-card">
@@ -1274,7 +1311,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const t = useT();
   const { pw } = usePowerUnit();
   const now = useNow();
-  const weather = useWeather();
+  const weather = useWeather(config?.weatherLat, config?.weatherLon);
   const [hiddenSeries, setHiddenSeries] = useState(new Set<string>());
   const [hiddenTrendSeries, setHiddenTrendSeries] = useState(new Set<string>());
   const [openChart, setOpenChart] = useState<'today' | null>(null);
@@ -1388,17 +1425,19 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             </div>
           </div>
 
+          {weather && (
           <div className="sf-weather-mini">
-            <WeatherGlyph code={weather?.code ?? 0} size={32} />
+            <WeatherGlyph code={weather.code ?? 0} size={32} />
             <div className="sf-wm-temp">
-              <div className="sf-wm-t">{weather ? weather.tempMax : '--'}<span className="sf-wm-deg">°C</span><span className="sf-wm-min">/{weather ? weather.tempMin : '--'}°</span></div>
-              <div className="sf-wm-c">{weather ? (weather.city ? `${weather.city} · ${t(`weather.${wmoKey(weather.code)}`)}` : t(`weather.${wmoKey(weather.code)}`)) : '--'}</div>
+              <div className="sf-wm-t">{weather.tempMax}<span className="sf-wm-deg">°C</span><span className="sf-wm-min">/{weather.tempMin}°</span></div>
+              <div className="sf-wm-c">{weather.city ? `${weather.city} · ${t(`weather.${wmoKey(weather.code)}`)}` : t(`weather.${wmoKey(weather.code)}`)}</div>
             </div>
             <div className="sf-wm-sep" />
-            <div className="sf-wm-stat"><span className="k">{t('weather.sunset')}</span><span className="v">{weather?.sunset ?? '--:--'}</span></div>
-            <div className="sf-wm-stat"><span className="k">{t('weather.uv')}</span><span className="v">{weather?.uv ?? '--'}</span></div>
-            <div className="sf-wm-stat"><span className="k">{t('weather.irrad')}</span><span className="v">{weather ? `${weather.irr} kWh/m²` : '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.sunset')}</span><span className="v">{weather.sunset ?? '--:--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.uv')}</span><span className="v">{weather.uv ?? '--'}</span></div>
+            <div className="sf-wm-stat"><span className="k">{t('weather.irrad')}</span><span className="v">{`${weather.irr} kWh/m²`}</span></div>
           </div>
+          )}
         </div>
       </div>
 
