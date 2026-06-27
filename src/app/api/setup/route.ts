@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { normalizePricing } from '@/lib/pricing';
+import { finalizeClosedMonths, reopenMonthsWithChangedManual, pricingOf, vatOf } from '@/lib/savings';
 
 export async function GET() {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('deviceConfig') as
@@ -24,6 +25,13 @@ export async function POST(req: NextRequest) {
   if (!deviceSn?.trim() || !inverterIp?.trim()) {
     return NextResponse.json({ error: 'deviceSn and inverterIp are required' }, { status: 400 });
   }
+
+  // Snapshot of the previously-saved config — needed to (a) freeze elapsed months
+  // at the OLD tariff before we overwrite it, and (b) detect manual-data edits.
+  const oldRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('deviceConfig') as
+    | { value: string } | undefined;
+  let oldCfg: any = {};
+  try { oldCfg = oldRow ? JSON.parse(oldRow.value) : {}; } catch { oldCfg = {}; }
 
   // Designed PV power per string (Wp). The inverter has no register for this, so it
   // is entered manually and used only to show a utilisation % on the dashboard.
@@ -83,6 +91,13 @@ export async function POST(req: NextRequest) {
     vatPercent: vat,
   };
 
+  // ── Monthly snapshot bookkeeping ──
+  // 1) Freeze every elapsed month at the OLD tariff before it is replaced, so a
+  //    tariff/VAT change can never retroactively alter already-closed months.
+  if (oldCfg?.deviceSn) {
+    finalizeClosedMonths(oldCfg.deviceSn, oldCfg.manualSolar, pricingOf(oldCfg), vatOf(oldCfg));
+  }
+
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(
     'deviceConfig',
     JSON.stringify(config),
@@ -92,6 +107,13 @@ export async function POST(req: NextRequest) {
     'activeDeviceSn',
     config.deviceSn,
   );
+
+  // 2) If manual gap-fill data changed for an already-closed month, re-open it
+  //    (delete its snapshot) and 3) re-close it at the NEW tariff.
+  if (oldCfg?.deviceSn === config.deviceSn) {
+    reopenMonthsWithChangedManual(config.deviceSn, oldCfg.manualSolar, config.manualSolar);
+  }
+  finalizeClosedMonths(config.deviceSn, config.manualSolar, pricingOf(config), vatOf(config));
 
   return NextResponse.json({ ok: true });
 }

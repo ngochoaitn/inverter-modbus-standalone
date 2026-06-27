@@ -5,7 +5,7 @@ import {
   BatteryCharging, ChevronLeft, ChevronRight, Home, MapPin, Maximize2, Settings, Sun, X, Zap,
 } from 'lucide-react';
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ReferenceLine,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Legend, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import HistoricalGraph from './HistoricalGraph';
@@ -404,7 +404,7 @@ interface SavingsData {
   month?: number;
   total?: number;
   year?: number;
-  series?: { month: number; savings: number }[];
+  series?: { month: number; savings: number; closed?: boolean }[];
   roi?: { investmentCost: number; installDate: string | null; percent: number; daysRemaining: number | null } | null;
 }
 
@@ -432,7 +432,7 @@ function SavingsCard({ data, year, onYear, onConfigure }: {
   const thisYear = new Date().getFullYear();
 
   const chartData = useMemo(
-    () => (data?.series ?? []).map(s => ({ label: `T${s.month}`, savings: s.savings })),
+    () => (data?.series ?? []).map(s => ({ label: `T${s.month}`, savings: s.savings, closed: !!s.closed })),
     [data],
   );
   const yMax = useMemo(() => {
@@ -505,9 +505,18 @@ function SavingsCard({ data, year, onYear, onConfigure }: {
             cursor={{ fill: 'var(--sf-line)', opacity: 0.5 }}
             contentStyle={{ background: 'var(--sf-panel)', border: '1px solid var(--sf-line)', borderRadius: 4, fontSize: 11, padding: '6px 10px' }}
             labelFormatter={(l: any) => `${l}/${year}`}
-            formatter={(v: any) => [fmtMoney(v, false), t('savings.saved')]}
+            formatter={(v: any, _n: any, item: any) => [
+              `${fmtMoney(v, false)}${item?.payload?.closed ? ` 🔒 ${t('savings.closed')}` : ''}`,
+              t('savings.saved'),
+            ]}
           />
-          <Bar dataKey="savings" fill="#38a34b" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="savings" fill="#38a34b" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+            <LabelList dataKey="savings" position="top" content={(p: any) => {
+              const d = chartData[p.index];
+              if (!d?.closed || !d.savings) return null;
+              return <text x={Number(p.x) + Number(p.width) / 2} y={Number(p.y) - 4} textAnchor="middle" fontSize={9}>🔒</text>;
+            }} />
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </section>
@@ -1369,7 +1378,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const isOnline  = lastSeen ? (now - lastSeen.getTime() < 15_000) : false;
   const lastTime  = lastSeen ? lastSeen.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
 
-  const homeEnergy   = n(metrics.loadEnergyToday);
+  const homeEnergy  = n(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday);
   const importEnergy = n(metrics.importEnergyToday);
   const selfSufficiency = homeEnergy > 0 ? Math.max(0, Math.min(100, (1 - importEnergy / homeEnergy) * 100)) : 0;
 

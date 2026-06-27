@@ -1,26 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { normalizePricing, tieredValue, touEffectiveRate } from '@/lib/pricing';
+import {
+  computeMonthSavings, finalizeClosedMonths, getMergedDays, getSnapshots,
+  groupByMonth, currentYm, pricingOf, vatOf, type MonthValue,
+} from '@/lib/savings';
 
-// Daily solar production (kWh) — pvEnergyToday is a per-day accumulator, so MAX
-// over the day's rows is that day's total. Mirrors the trend route's approach.
-const DAILY_SOLAR_SQL = `
-  SELECT
-    strftime('%Y-%m-%d', createdAt) AS day,
-    ROUND(MAX(CAST(json_extract(data, '$.pvEnergyToday') AS REAL)), 3) AS solar
-  FROM history
-  WHERE deviceSn = ?
-  GROUP BY strftime('%Y-%m-%d', createdAt)
-  HAVING solar > 0
-  ORDER BY day
-`;
-
-// Local "today" / "this month" keys, consistent with the rest of the app which
-// assumes the server runs in the user's timezone (Lux Local).
-function localKeys() {
+// Local "today" key, consistent with the rest of the app which assumes the server
+// runs in the user's timezone (Lux Local).
+function todayKey() {
   const now = new Date();
-  const ymd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  return { today: ymd, month: ymd.slice(0, 7) };
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -35,63 +24,43 @@ export async function GET(req: NextRequest) {
   let cfg: any = {};
   try { cfg = row ? JSON.parse(row.value) : {}; } catch { cfg = {}; }
 
-  if (!cfg?.pricing) {
-    return NextResponse.json({ configured: false });
-  }
+  if (!cfg?.pricing) return NextResponse.json({ configured: false });
 
-  const pricing = normalizePricing(cfg.pricing);
-  const touRate = pricing.type === 'tou' ? touEffectiveRate(pricing.tou) : 0;
-
-  // VAT on the electricity bill (Vietnam: 8%). Defaults to 8 when not configured;
-  // 0 is respected when explicitly set.
-  const vatPercent = Number.isFinite(Number(cfg.vatPercent)) ? Number(cfg.vatPercent) : 8;
-  const vatMul = 1 + vatPercent / 100;
-
-  // Value one day's production given how much the system already produced earlier
-  // in the same calendar month (only matters for the tiered ladder). VAT-inclusive.
-  const valueDay = (solar: number, monthBefore: number): number =>
-    (pricing.type === 'tou' ? solar * touRate : tieredValue(monthBefore, solar, pricing.tiers)) * vatMul;
+  const pricing = pricingOf(cfg)!;
+  const vatPercent = vatOf(cfg);
 
   try {
-    const dbDays = db.prepare(DAILY_SOLAR_SQL).all(deviceSn) as { day: string; solar: number }[];
+    // Lazily freeze any fully-elapsed month at the current tariff before reading.
+    finalizeClosedMonths(deviceSn, cfg.manualSolar, pricing, vatPercent);
 
-    // Merge manually-entered daily kWh for days the inverter wasn't being logged
-    // yet. Real DB readings win on conflict; manual entries only fill the gaps.
-    const dayMap = new Map<string, number>();
-    const manualSolar: { date: string; kwh: number }[] = Array.isArray(cfg.manualSolar) ? cfg.manualSolar : [];
-    for (const m of manualSolar) {
-      const kwh = Number(m?.kwh);
-      if (typeof m?.date === 'string' && Number.isFinite(kwh) && kwh > 0) dayMap.set(m.date, kwh);
-    }
-    for (const d of dbDays) dayMap.set(d.day, Number(d.solar) || 0);
-    const days = [...dayMap.entries()]
-      .map(([day, solar]) => ({ day, solar }))
-      .sort((a, b) => a.day.localeCompare(b.day));
+    const days = getMergedDays(deviceSn, cfg.manualSolar);
+    const byMonth = groupByMonth(days);
+    const snapshots = getSnapshots(deviceSn);
+    const cur = currentYm();
+    const tKey = todayKey();
 
-    const { today, month } = localKeys();
-    const monthAccum = new Map<string, number>(); // 'YYYY-MM' → kWh so far this month
-    const monthly = new Map<string, number>();     // 'YYYY-MM' → savings (đ)
-    let total = 0;
+    // Resolve each month: closed → snapshot (frozen); otherwise compute live.
+    const monthly = new Map<string, MonthValue>();
     let todayValue = 0;
-    let firstDay: string | null = null;
-
-    for (const d of days) {
-      const solar = Number(d.solar) || 0;
-      if (solar <= 0) continue;
-      if (!firstDay) firstDay = d.day;
-      const mk = d.day.slice(0, 7);
-      const before = monthAccum.get(mk) ?? 0;
-      const v = valueDay(solar, before);
-      monthAccum.set(mk, before + solar);
-      monthly.set(mk, (monthly.get(mk) ?? 0) + v);
-      total += v;
-      if (d.day === today) todayValue = v;
+    for (const [ym, mdays] of byMonth) {
+      const snap = snapshots.get(ym);
+      if (ym < cur && snap) {
+        monthly.set(ym, { kwh: snap.kwh, savings: snap.savings });
+      } else {
+        const live = computeMonthSavings(mdays, pricing, vatPercent, ym === cur ? tKey : undefined);
+        monthly.set(ym, { kwh: live.kwh, savings: live.savings });
+        if (ym === cur) todayValue = live.todayValue;
+      }
     }
 
-    // 12-month series for the requested year (T1..T12).
+    const savingsOf = (ym: string) => monthly.get(ym)?.savings ?? 0;
+    const total = [...monthly.values()].reduce((s, m) => s + m.savings, 0);
+    const firstDay = days[0]?.day ?? null;
+
+    // 12-month series for the requested year (T1..T12), flagged closed for the lock icon.
     const series = Array.from({ length: 12 }, (_, i) => {
-      const mk = `${year}-${String(i + 1).padStart(2, '0')}`;
-      return { month: i + 1, savings: Math.round(monthly.get(mk) ?? 0) };
+      const ym = `${year}-${String(i + 1).padStart(2, '0')}`;
+      return { month: i + 1, savings: Math.round(savingsOf(ym)), closed: snapshots.has(ym) };
     });
 
     // ROI from the manually-entered system cost + install date.
@@ -102,21 +71,18 @@ export async function GET(req: NextRequest) {
       const percent = Math.min(100, Math.round((total / investmentCost) * 100));
       const remaining = Math.max(0, investmentCost - total);
 
-      // Project the payback from the run-rate. Electricity is billed monthly (and
-      // tiered rates reset monthly), so the natural unit is a *complete* month —
-      // we drop the in-progress month, and the install month too if the system
-      // came online mid-month (a partial first month would bias the average low).
+      // Project payback from the run-rate over *complete* months (drop the
+      // in-progress month, and the install month if it came online mid-month).
       const installMonth = installDate ? installDate.slice(0, 7) : null;
       const installMidMonth = !!installDate && installDate.slice(8, 10) !== '01' && installDate.slice(8, 10) !== '';
       const completeMonths = [...monthly.entries()]
-        .filter(([mk]) => mk < month && !(installMidMonth && mk === installMonth))
+        .filter(([ym]) => ym < cur && !(installMidMonth && ym === installMonth))
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([, v]) => v);
+        .map(([, m]) => m.savings);
 
       let daysRemaining: number | null = null;
       let basis: 'trailing12' | 'monthlyAvg' | 'dailyAvg' = 'dailyAvg';
       if (completeMonths.length >= 12) {
-        // Full seasonal cycle available → use the trailing 12 months.
         const last12 = completeMonths.slice(-12).reduce((s, v) => s + v, 0);
         const perMonth = last12 / 12;
         if (perMonth > 0) { daysRemaining = Math.round((remaining / perMonth) * 30.44); basis = 'trailing12'; }
@@ -125,7 +91,6 @@ export async function GET(req: NextRequest) {
         if (perMonth > 0) { daysRemaining = Math.round((remaining / perMonth) * 30.44); basis = 'monthlyAvg'; }
       }
       if (daysRemaining == null) {
-        // Fallback: not even one complete month yet → average over elapsed days.
         const elapsedDays = installDate
           ? Math.max(1, Math.round((Date.now() - new Date(installDate).getTime()) / 86_400_000))
           : Math.max(1, days.length);
@@ -141,7 +106,7 @@ export async function GET(req: NextRequest) {
       currency: 'đ',
       vatPercent,
       today: Math.round(todayValue),
-      month: Math.round(monthly.get(month) ?? 0),
+      month: Math.round(savingsOf(cur)),
       total: Math.round(total),
       year,
       series,

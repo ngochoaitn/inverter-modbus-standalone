@@ -22,6 +22,20 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_history_sn_date ON history(deviceSn, createdAt);
+
+  -- Frozen monthly savings snapshots. Once a calendar month has fully elapsed it
+  -- is "closed" with the pricing/VAT in effect at the time, so later tariff edits
+  -- never change already-billed months. Created automatically on startup.
+  CREATE TABLE IF NOT EXISTS monthly_savings (
+    deviceSn    TEXT,
+    ym          TEXT,            -- 'YYYY-MM'
+    kwh         REAL,
+    savings     INTEGER,         -- đ, VAT-inclusive
+    vatPercent  REAL,
+    pricingJson TEXT,            -- snapshot of the tariff used (audit / re-open)
+    closedAt    TEXT,
+    PRIMARY KEY (deviceSn, ym)
+  );
 `);
 
 export interface Reading {
