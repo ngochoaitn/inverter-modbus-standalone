@@ -589,6 +589,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
     installDate: String(config?.installDate || ''),
     weatherLat: config?.weatherLat == null ? '' : String(config.weatherLat),
     weatherLon: config?.weatherLon == null ? '' : String(config.weatherLon),
+    vatPercent: config?.vatPercent == null ? '8' : String(config.vatPercent),
   });
   // Electricity tariff (one of two shapes). Seed from saved config or defaults.
   const initialPricing = useMemo(
@@ -679,6 +680,7 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
             .filter(e => e.date && Number.isFinite(e.kwh) && e.kwh > 0),
           weatherLat: form.weatherLat.trim() === '' ? null : Number(form.weatherLat),
           weatherLon: form.weatherLon.trim() === '' ? null : Number(form.weatherLon),
+          vatPercent: form.vatPercent.trim() === '' ? 8 : Number(form.vatPercent),
         }),
       });
       const data = await res.json();
@@ -860,6 +862,15 @@ function ConfigModal({ config, onClose, onSaved }: { config: any; onClose: () =>
                 <div className="sf-tier-hint">{t('pricing.touNote')}</div>
               </div>
             )}
+
+            {/* ── VAT ── */}
+            <div className="sf-config-grid" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 12 }}>
+              <div className="sf-config-field">
+                <div className="field-label-row"><label>{t('pricing.vat')}</label></div>
+                <input type="number" value={form.vatPercent} onChange={set('vatPercent')} min={0} max={100} step="any" placeholder="8" />
+              </div>
+            </div>
+            <div className="sf-tier-hint" style={{ marginTop: 6 }}>{t('pricing.vatNote')}</div>
 
             {/* ── Investment / ROI ── */}
             <div className="field-label-row" style={{ marginTop: 16 }}>

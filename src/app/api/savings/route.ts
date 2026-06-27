@@ -42,10 +42,15 @@ export async function GET(req: NextRequest) {
   const pricing = normalizePricing(cfg.pricing);
   const touRate = pricing.type === 'tou' ? touEffectiveRate(pricing.tou) : 0;
 
+  // VAT on the electricity bill (Vietnam: 8%). Defaults to 8 when not configured;
+  // 0 is respected when explicitly set.
+  const vatPercent = Number.isFinite(Number(cfg.vatPercent)) ? Number(cfg.vatPercent) : 8;
+  const vatMul = 1 + vatPercent / 100;
+
   // Value one day's production given how much the system already produced earlier
-  // in the same calendar month (only matters for the tiered ladder).
+  // in the same calendar month (only matters for the tiered ladder). VAT-inclusive.
   const valueDay = (solar: number, monthBefore: number): number =>
-    pricing.type === 'tou' ? solar * touRate : tieredValue(monthBefore, solar, pricing.tiers);
+    (pricing.type === 'tou' ? solar * touRate : tieredValue(monthBefore, solar, pricing.tiers)) * vatMul;
 
   try {
     const dbDays = db.prepare(DAILY_SOLAR_SQL).all(deviceSn) as { day: string; solar: number }[];
@@ -134,6 +139,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       configured: true,
       currency: 'đ',
+      vatPercent,
       today: Math.round(todayValue),
       month: Math.round(monthly.get(month) ?? 0),
       total: Math.round(total),

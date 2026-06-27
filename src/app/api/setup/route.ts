@@ -19,7 +19,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid, pricing, investmentCost, installDate, manualSolar, weatherLat, weatherLon } = body;
+  const { deviceSn, dongleSn, inverterIp, inverterPort, pvRatedW, socFloorOnGrid, socFloorOffGrid, pricing, investmentCost, installDate, manualSolar, weatherLat, weatherLon, vatPercent } = body;
 
   if (!deviceSn?.trim() || !inverterIp?.trim()) {
     return NextResponse.json({ error: 'deviceSn and inverterIp are required' }, { status: 400 });
@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
   const wLat = coord(weatherLat, 90);
   const wLon = coord(weatherLon, 180);
 
+  // VAT % on the electricity bill (default 8). 0 is allowed; out-of-range → 8.
+  const vatNum = Number(vatPercent);
+  const vat = Number.isFinite(vatNum) && vatNum >= 0 && vatNum <= 100 ? vatNum : 8;
+
   // Manually-entered daily PV production (kWh) for days before monitoring started.
   // Stored as a deduped, date-sorted list; the savings API fills gaps with these.
   const manual = (Array.isArray(manualSolar) ? manualSolar : [])
@@ -76,6 +80,7 @@ export async function POST(req: NextRequest) {
     manualSolar: manualClean,
     weatherLat: wLat,
     weatherLon: wLon,
+    vatPercent: vat,
   };
 
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(
