@@ -317,7 +317,7 @@ const TREND_SERIES = [
   { key: 'gridImport',   color: '#7f858a', labelKey: 'trend.gridImport'   },
 ];
 
-type TrendPeriod = 'day' | 'month' | 'year';
+type TrendPeriod = 'day' | 'week' | 'month' | 'year';
 
 function useTrendChart(deviceSn: string | undefined, period: TrendPeriod) {
   const [data, setData] = useState<any[]>([]);
@@ -337,6 +337,7 @@ function fmtTrendLabel(periodStr: string, mode: TrendPeriod) {
   const d = new Date(periodStr);
   if (mode === 'year')  return String(d.getUTCFullYear());
   if (mode === 'month') return d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' });
+  // day and week both render one bar per day → day-of-month label.
   return String(d.getUTCDate()).padStart(2, '0');
 }
 
@@ -1279,7 +1280,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
             <div className="sfm-chart-head">
               <span className="sfm-chart-title">{t('title.energyTrend')}</span>
               <div className="sf-period-toggle">
-                {(['day', 'month', 'year'] as TrendPeriod[]).map(p => (
+                {(['day', 'week', 'month', 'year'] as TrendPeriod[]).map(p => (
                   <button key={p} className={trendPeriod === p ? 'active' : ''} onClick={() => setTrendPeriod(p)}>
                     {t(`period.${p}`)}
                   </button>
@@ -1742,7 +1743,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
           <div className="sf-card-head" style={{ alignItems: 'center', marginBottom: 0 }}>
             <div className="sf-card-title">{t('title.historyTrend')}</div>
             <div className="sf-period-toggle">
-              {(['day', 'month', 'year'] as TrendPeriod[]).map(p => (
+              {(['day','week', 'month', 'year'] as TrendPeriod[]).map(p => (
                 <button key={p} className={trendPeriod === p ? 'active' : ''} onClick={() => setTrendPeriod(p)}>
                   {t(`period.${p}`)}
                 </button>

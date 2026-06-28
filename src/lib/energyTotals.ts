@@ -109,12 +109,59 @@ export function finalizeClosedDays(deviceSn: string): void {
   tx(rows);
 }
 
+// One day's energy figures (kWh), shape shared by the frozen rollup and today's
+// live row.
+export interface DailyEnergyRow {
+  day: string; pv: number; home: number; batCharge: number;
+  batDischarge: number; gridImport: number; gridExport: number;
+}
+
 // Today's live "today" counters from the latest poll snapshot.
 function latestMetrics(deviceSn: string): any {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?')
     .get(`latest_${deviceSn}`) as { value: string } | undefined;
   if (!row) return {};
   try { return JSON.parse(row.value)?.metrics ?? {}; } catch { return {}; }
+}
+
+// Today's in-progress day as a DailyEnergyRow, derived from the latest snapshot.
+// home mirrors the daily-aggregate preference order (stored value → load → balance).
+// Returns null when there is no snapshot yet. Labelled with the local date so it
+// lines up with the UTC-grouped frozen days (see localToday).
+function todayLiveRow(deviceSn: string): DailyEnergyRow | null {
+  const m = latestMetrics(deviceSn);
+  if (!m || Object.keys(m).length === 0) return null;
+  const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const pv = num(m.pvEnergyToday);
+  const home = num(m.homeConsumptionEnergyToday) > 0
+    ? num(m.homeConsumptionEnergyToday)
+    : num(m.loadEnergyToday) > 0
+      ? num(m.loadEnergyToday)
+      : Math.max(0, pv + num(m.importEnergyToday) + num(m.batteryDischargeEnergyToday)
+          - num(m.exportEnergyToday) - num(m.batteryChargeEnergyToday));
+  return {
+    day: localToday(),
+    pv,
+    home,
+    batCharge: num(m.batteryChargeEnergyToday),
+    batDischarge: num(m.batteryDischargeEnergyToday),
+    gridImport: num(m.importEnergyToday),
+    gridExport: num(m.exportEnergyToday),
+  };
+}
+
+// All frozen days + today's live row, ascending by day. The trend chart reads this
+// instead of re-scanning history: O(days) rather than O(history rows). Freezes any
+// newly-closed day first (cheap, incremental).
+export function getDailyEnergyRows(deviceSn: string): DailyEnergyRow[] {
+  finalizeClosedDays(deviceSn);
+  const rows = db.prepare(
+    `SELECT day, pv, home, batCharge, batDischarge, gridImport, gridExport
+     FROM daily_energy WHERE deviceSn = ? ORDER BY day`,
+  ).all(deviceSn) as DailyEnergyRow[];
+  const today = todayLiveRow(deviceSn);
+  if (today && !rows.some(r => r.day === today.day)) rows.push(today);
+  return rows;
 }
 
 // Manually-entered daily PV (kWh), validated like the trend route does.
@@ -155,25 +202,13 @@ export function getAllTimeTotals(deviceSn: string): EnergyTotals {
     frozenDays.add(r.day);
   }
 
-  // Today's live contribution (not yet frozen). home uses the same preference
-  // order as the daily aggregate.
-  const m = latestMetrics(deviceSn);
-  const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const todayPv = num(m.pvEnergyToday);
-  const todayHome = num(m.homeConsumptionEnergyToday) > 0
-    ? num(m.homeConsumptionEnergyToday)
-    : num(m.loadEnergyToday) > 0
-      ? num(m.loadEnergyToday)
-      : Math.max(0, todayPv + num(m.importEnergyToday) + num(m.batteryDischargeEnergyToday)
-          - num(m.exportEnergyToday) - num(m.batteryChargeEnergyToday));
-  const todayImport = num(m.importEnergyToday);
-
-  pv += todayPv;
-  home += todayHome;
-  batCharge += num(m.batteryChargeEnergyToday);
-  batDischarge += num(m.batteryDischargeEnergyToday);
-  gridImport += todayImport;
-  gridExport += num(m.exportEnergyToday);
+  // Today's live contribution (not yet frozen), unless already frozen this run.
+  const today = todayLiveRow(deviceSn);
+  if (today && !frozenDays.has(today.day)) {
+    pv += today.pv; home += today.home; batCharge += today.batCharge;
+    batDischarge += today.batDischarge; gridImport += today.gridImport;
+    gridExport += today.gridExport;
+  }
 
   // Self-sufficiency from real history only (frozen + today). Manual days carry PV
   // but no home reading, so folding them in would inflate the ratio — excluded.

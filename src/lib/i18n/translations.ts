@@ -55,7 +55,7 @@ const vi: Dict = {
     historyToday: 'Lịch sử năng lượng · Hôm nay',
     historyTrend: 'Lịch sử năng lượng · Xu hướng',
   },
-  period: { day: 'Ngày', month: 'Tháng', year: 'Năm' },
+  period: { day: 'Ngày', week: 'Tuần', month: 'Tháng', year: 'Năm' },
   node: {
     totalPv: 'Tổng PV',
     pvTotal: 'Tổng PV',
@@ -331,7 +331,7 @@ const en: Dict = {
     historyToday: 'Energy History · Today',
     historyTrend: 'Energy History · Trend',
   },
-  period: { day: 'Day', month: 'Month', year: 'Year' },
+  period: { day: 'Day', week: 'Week', month: 'Month', year: 'Year' },
   node: {
     totalPv: 'Total PV',
     pvTotal: 'PV Total',

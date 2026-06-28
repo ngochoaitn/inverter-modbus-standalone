@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { getDailyEnergyRows } from '@/lib/energyTotals';
 
-type Period = 'day' | 'month' | 'year';
+type Period = 'day' | 'week' | 'month' | 'year';
 
 // Manually-entered daily PV (kWh) saved on deviceConfig by /api/setup. Already
 // deduped/sorted there; we just validate defensively.
@@ -20,98 +21,70 @@ function getManualSolar(): { date: string; kwh: number }[] {
   }
 }
 
-// home: prefer homeConsumptionEnergyToday (stored by mapper since recent fix),
-// fall back to energy-balance formula for older history rows where reg 171 was 0
-// and homeConsumptionEnergyToday was not yet computed by the mapper.
-const DAILY_SQL = `
-  SELECT
-    strftime('%Y-%m-%d', createdAt) AS period,
-    ROUND(MAX(CAST(json_extract(data, '$.pvEnergyToday') AS REAL)), 2) AS solar,
-    ROUND(MAX(
-      CASE
-        WHEN CAST(json_extract(data, '$.homeConsumptionEnergyToday') AS REAL) > 0
-          THEN CAST(json_extract(data, '$.homeConsumptionEnergyToday') AS REAL)
-        WHEN CAST(json_extract(data, '$.loadEnergyToday') AS REAL) > 0
-          THEN CAST(json_extract(data, '$.loadEnergyToday') AS REAL)
-        ELSE
-          COALESCE(CAST(json_extract(data, '$.pvEnergyToday')               AS REAL), 0) +
-          COALESCE(CAST(json_extract(data, '$.importEnergyToday')            AS REAL), 0) +
-          COALESCE(CAST(json_extract(data, '$.batteryDischargeEnergyToday')  AS REAL), 0) -
-          COALESCE(CAST(json_extract(data, '$.exportEnergyToday')            AS REAL), 0) -
-          COALESCE(CAST(json_extract(data, '$.batteryChargeEnergyToday')     AS REAL), 0)
-      END
-    ), 2) AS home,
-    ROUND(MAX(CAST(json_extract(data, '$.batteryChargeEnergyToday')    AS REAL)), 2) AS batCharge,
-    ROUND(MAX(CAST(json_extract(data, '$.batteryDischargeEnergyToday') AS REAL)), 2) AS batDischarge,
-    ROUND(MAX(CAST(json_extract(data, '$.importEnergyToday')           AS REAL)), 2) AS gridImport
-  FROM history
-  WHERE deviceSn = ? AND createdAt >= ? AND createdAt <= ?
-  GROUP BY strftime('%Y-%m-%d', createdAt)
-  ORDER BY period
-`;
+const pad = (n: number) => String(n).padStart(2, '0');
+const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const round2 = (v: number) => Math.round(v * 100) / 100;
 
-function dateRange(period: Period): { from: string; to: string } {
+// Monday-anchored start of the week containing d (local time). Week starts Monday.
+function mondayOf(d: Date): Date {
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const back = (r.getDay() + 6) % 7; // getDay: 0=Sun..6=Sat → days since Monday
+  r.setDate(r.getDate() - back);
+  return r;
+}
+
+// Inclusive day-string bounds for each period, in local calendar dates (matching
+// the daily_energy day labels). 'day' → current month, 'week' → current week
+// (Monday→today), 'month' → current year, 'year' → last 5 calendar years.
+function dateRange(period: Period): { fromDay: string; toDay: string } {
   const now = new Date();
   let from: Date;
   if (period === 'year') {
     from = new Date(now.getFullYear() - 4, 0, 1);
   } else if (period === 'month') {
     from = new Date(now.getFullYear(), 0, 1);
+  } else if (period === 'week') {
+    from = mondayOf(now);
   } else {
     from = new Date(now.getFullYear(), now.getMonth(), 1);
   }
-  const to = new Date(now);
-  to.setHours(23, 59, 59, 999);
-  return { from: from.toISOString(), to: to.toISOString() };
+  return { fromDay: ymd(from), toDay: ymd(now) };
 }
 
-function groupByMonth(rows: any[]) {
-  const map = new Map<string, any>();
+interface Row {
+  period: string; solar: number; home: number;
+  batCharge: number; batDischarge: number; gridImport: number;
+}
+
+const emptyAcc = (period: string): Row =>
+  ({ period, solar: 0, home: 0, batCharge: 0, batDischarge: 0, gridImport: 0 });
+
+// Sum daily rows into buckets keyed by `keyOf(row.period)`; the bucket's period is
+// that key. Shared by week/month/year grouping.
+function groupBy(rows: Row[], keyOf: (period: string) => string): Row[] {
+  const map = new Map<string, Row>();
   for (const r of rows) {
-    const key = r.period.slice(0, 7) + '-01';
-    if (!map.has(key)) {
-      map.set(key, { period: key, solar: 0, home: 0, batCharge: 0, batDischarge: 0, gridImport: 0 });
-    }
+    const key = keyOf(r.period);
+    if (!map.has(key)) map.set(key, emptyAcc(key));
     const acc = map.get(key)!;
-    acc.solar       += r.solar       ?? 0;
-    acc.home        += r.home        ?? 0;
-    acc.batCharge   += r.batCharge   ?? 0;
-    acc.batDischarge+= r.batDischarge?? 0;
-    acc.gridImport  += r.gridImport  ?? 0;
+    acc.solar        += r.solar        ?? 0;
+    acc.home         += r.home         ?? 0;
+    acc.batCharge    += r.batCharge    ?? 0;
+    acc.batDischarge += r.batDischarge ?? 0;
+    acc.gridImport   += r.gridImport   ?? 0;
   }
   return [...map.values()].map(r => ({
-    ...r,
-    solar:        Math.round(r.solar        * 100) / 100,
-    home:         Math.round(r.home         * 100) / 100,
-    batCharge:    Math.round(r.batCharge    * 100) / 100,
-    batDischarge: Math.round(r.batDischarge * 100) / 100,
-    gridImport:   Math.round(r.gridImport   * 100) / 100,
+    period:       r.period,
+    solar:        round2(r.solar),
+    home:         round2(r.home),
+    batCharge:    round2(r.batCharge),
+    batDischarge: round2(r.batDischarge),
+    gridImport:   round2(r.gridImport),
   }));
 }
 
-function groupByYear(rows: any[]) {
-  const map = new Map<string, any>();
-  for (const r of rows) {
-    const key = r.period.slice(0, 4) + '-01-01';
-    if (!map.has(key)) {
-      map.set(key, { period: key, solar: 0, home: 0, batCharge: 0, batDischarge: 0, gridImport: 0 });
-    }
-    const acc = map.get(key)!;
-    acc.solar       += r.solar       ?? 0;
-    acc.home        += r.home        ?? 0;
-    acc.batCharge   += r.batCharge   ?? 0;
-    acc.batDischarge+= r.batDischarge?? 0;
-    acc.gridImport  += r.gridImport  ?? 0;
-  }
-  return [...map.values()].map(r => ({
-    ...r,
-    solar:        Math.round(r.solar        * 100) / 100,
-    home:         Math.round(r.home         * 100) / 100,
-    batCharge:    Math.round(r.batCharge    * 100) / 100,
-    batDischarge: Math.round(r.batDischarge * 100) / 100,
-    gridImport:   Math.round(r.gridImport   * 100) / 100,
-  }));
-}
+const monthKeyOf = (period: string) => period.slice(0, 7) + '-01';
+const yearKeyOf  = (period: string) => period.slice(0, 4) + '-01-01';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -121,32 +94,33 @@ export async function GET(req: NextRequest) {
   if (!deviceSn) return NextResponse.json({ error: 'Missing deviceSn' }, { status: 400 });
 
   try {
-    const { from, to } = dateRange(period);
-    const daily = db.prepare(DAILY_SQL).all(deviceSn, from, to) as any[];
+    const { fromDay, toDay } = dateRange(period);
 
-    // Fold in manually-entered daily PV (kWh) for days that were not logged yet,
-    // so the savings card and this trend chart agree. Real logged days win on
-    // conflict; manual entries only add days missing from the query result.
-    const dailyByPeriod = new Map<string, any>(daily.map(r => [r.period, r]));
-    const fromDay = from.slice(0, 10);
-    const toDay = to.slice(0, 10);
-    const manual = getManualSolar();
-    for (const m of manual) {
+    // Per-day figures come from the frozen daily_energy rollup (+ today live),
+    // never a full history scan. Same 5 series the chart renders.
+    const daily: Row[] = getDailyEnergyRows(deviceSn)
+      .filter(r => r.day >= fromDay && r.day <= toDay)
+      .map(r => ({
+        period: r.day,
+        solar: round2(r.pv), home: round2(r.home),
+        batCharge: round2(r.batCharge), batDischarge: round2(r.batDischarge),
+        gridImport: round2(r.gridImport),
+      }));
+
+    // Fold in manually-entered daily PV (kWh) for days not logged yet, so the
+    // chart agrees with the savings card. Logged days win on conflict.
+    const dailyByPeriod = new Map<string, Row>(daily.map(r => [r.period, r]));
+    for (const m of getManualSolar()) {
       if (m.date < fromDay || m.date > toDay || dailyByPeriod.has(m.date)) continue;
-      dailyByPeriod.set(m.date, {
-        period: m.date, solar: m.kwh, home: 0, batCharge: 0, batDischarge: 0, gridImport: 0,
-      });
+      dailyByPeriod.set(m.date, { ...emptyAcc(m.date), solar: m.kwh });
     }
     const merged = [...dailyByPeriod.values()].sort((a, b) => a.period.localeCompare(b.period));
 
-    let rows: any[];
-    if (period === 'year') {
-      rows = groupByYear(merged);
-    } else if (period === 'month') {
-      rows = groupByMonth(merged);
-    } else {
-      rows = merged;
-    }
+    // 'day' and 'week' render one bar per day (no grouping); only month/year roll up.
+    let rows: Row[];
+    if (period === 'year')       rows = groupBy(merged, yearKeyOf);
+    else if (period === 'month') rows = groupBy(merged, monthKeyOf);
+    else                         rows = merged;
 
     return NextResponse.json(rows);
   } catch (err: any) {
