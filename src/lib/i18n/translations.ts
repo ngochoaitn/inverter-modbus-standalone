@@ -93,6 +93,8 @@ const vi: Dict = {
   summary: {
     title: 'Tổng quan hệ thống',
     todayTotal: 'Hôm nay · Tổng',
+    todayCol: 'Hôm nay',
+    allTime: 'Tổng tích lũy',
     solarOutput: 'Điện mặt trời',
     homeUsage: 'Tiêu thụ',
     batteryCycle: 'Chu kỳ pin',
@@ -367,6 +369,8 @@ const en: Dict = {
   summary: {
     title: 'System Summary',
     todayTotal: 'Today · Total',
+    todayCol: 'Today',
+    allTime: 'All-time',
     solarOutput: 'Solar Output',
     homeUsage: 'Home Usage',
     batteryCycle: 'Battery Cycle',

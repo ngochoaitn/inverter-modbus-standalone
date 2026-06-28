@@ -422,6 +422,30 @@ function useSavings(deviceSn: string | undefined, year: number, refreshKey: unkn
   return data;
 }
 
+// All-time energy totals (kWh) for the "Total" column on the summary cards.
+// Backed by the frozen daily_energy rollup, so this is cheap to poll. Refreshed on
+// the same 5-minute cadence as the day chart.
+interface EnergyTotals {
+  pv: number; home: number; batCharge: number; batDischarge: number;
+  gridImport: number; gridExport: number; selfSufficiency: number;
+}
+
+function useTotals(deviceSn: string | undefined) {
+  const [data, setData] = useState<EnergyTotals | null>(null);
+  useEffect(() => {
+    if (!deviceSn) return;
+    let cancelled = false;
+    const load = () => fetch(`/api/history/total?deviceSn=${deviceSn}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled && d && !d.error) setData(d); })
+      .catch(() => {});
+    load();
+    const timer = setInterval(load, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [deviceSn]);
+  return data;
+}
+
 // "TIẾT KIỆM & ROI" card: headline figures (today / month / total), an ROI badge,
 // and a per-month savings bar chart with year navigation. `onConfigure` opens the
 // settings modal when no tariff is set yet.
@@ -1009,6 +1033,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const chartData = useEnergyChart(deviceSn, selectedDate);
   const trendData = useTrendChart(deviceSn, trendPeriod);
   const savings = useSavings(deviceSn, savingsYear, config);
+  const totals = useTotals(deviceSn);
 
   const toggleTrend = (k: string) =>
     setHiddenTrend(prev => { const s = new Set(prev); s.has(k) ? s.delete(k) : s.add(k); return s; });
@@ -1268,18 +1293,24 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
         /* STATS tab */
         <div className="sfm-card summary-card" style={{ margin: '0 12px 16px' }}>
           <div className="sfm-list no-pad">
+            <div className="sfm-list-row sfm-list-head">
+              <span />
+              <b>{t('summary.todayCol')}</b>
+              <b>{t('summary.allTime')}</b>
+            </div>
             {[
-              { label: t('summary.solarOutput'),     val: `${fmt(metrics.pvEnergyToday, 1)} kWh`,                 color: 'var(--sf-solar)'   },
-              { label: t('summary.homeUsage'),       val: `${fmt(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday, 1)} kWh`,               color: 'var(--sf-load)'    },
-              { label: t('summary.batCharge'),       val: `${fmt(metrics.batteryChargeEnergyToday, 1)} kWh`,      color: 'var(--sf-battery)' },
-              { label: t('summary.batDischarge'),    val: `${fmt(metrics.batteryDischargeEnergyToday, 1)} kWh`,   color: 'var(--sf-battery)' },
-              { label: t('summary.gridImport'),      val: `${fmt(metrics.importEnergyToday, 1)} kWh`,             color: 'var(--sf-idle)'    },
-              { label: t('summary.gridExport'),      val: `${fmt(metrics.exportEnergyToday, 1)} kWh`,             color: 'var(--sf-solar)'   },
-              { label: t('summary.selfSufficiency'), val: `${fmt(selfSufficiency, 0)}%`,                          color: 'var(--sf-solar)'   },
+              { label: t('summary.solarOutput'),     today: `${fmt(metrics.pvEnergyToday, 1)} kWh`,                                       total: totals ? `${fmt(totals.pv, 1)} kWh`           : '—', color: 'var(--sf-solar)'   },
+              { label: t('summary.homeUsage'),       today: `${fmt(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday, 1)} kWh`, total: totals ? `${fmt(totals.home, 1)} kWh`         : '—', color: 'var(--sf-load)'    },
+              { label: t('summary.batCharge'),       today: `${fmt(metrics.batteryChargeEnergyToday, 1)} kWh`,                            total: totals ? `${fmt(totals.batCharge, 1)} kWh`    : '—', color: 'var(--sf-battery)' },
+              { label: t('summary.batDischarge'),    today: `${fmt(metrics.batteryDischargeEnergyToday, 1)} kWh`,                         total: totals ? `${fmt(totals.batDischarge, 1)} kWh` : '—', color: 'var(--sf-battery)' },
+              { label: t('summary.gridImport'),      today: `${fmt(metrics.importEnergyToday, 1)} kWh`,                                   total: totals ? `${fmt(totals.gridImport, 1)} kWh`   : '—', color: 'var(--sf-idle)'    },
+              { label: t('summary.gridExport'),      today: `${fmt(metrics.exportEnergyToday, 1)} kWh`,                                   total: totals ? `${fmt(totals.gridExport, 1)} kWh`   : '—', color: 'var(--sf-solar)'   },
+              { label: t('summary.selfSufficiency'), today: `${fmt(selfSufficiency, 0)}%`,                                                total: totals ? `${fmt(totals.selfSufficiency, 0)}%` : '—', color: 'var(--sf-solar)'   },
             ].map(row => (
               <div key={row.label} className="sfm-list-row">
                 <span>{row.label}</span>
-                <b style={{ color: row.color }}>{row.val}</b>
+                <b style={{ color: row.color }}>{row.today}</b>
+                <b style={{ color: row.color }}>{row.total}</b>
               </div>
             ))}
           </div>
@@ -1344,6 +1375,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const chartData = useEnergyChart(deviceSn, selectedDate);
   const trendData = useTrendChart(deviceSn, trendPeriod);
   const savings = useSavings(deviceSn, savingsYear, config);
+  const totals = useTotals(deviceSn);
 
   const toggleSeries = (key: string) =>
     setHiddenSeries(prev => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; });
@@ -1654,31 +1686,49 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
           <section className="sf-card">
             <div className="sf-card-head">
               <span className="sf-card-title">{t('summary.title')}</span>
-              <small className="sf-card-link">{t('summary.todayTotal')}</small>
+            </div>
+            <div className="sf-stat-row sf-stat-head">
+              <span />
+              <span className="col">{t('summary.todayCol')}</span>
+              <span className="col">{t('summary.allTime')}</span>
             </div>
             <div className="sf-stat-row">
               <span className="lab">{t('summary.solarOutput')}</span>
               <span className="val solar-c mono">{fmt(metrics.pvEnergyToday, 1)}<span className="unit"> kWh</span></span>
+              <span className="val total mono">{totals ? fmt(totals.pv, 1) : '—'}<span className="unit"> kWh</span></span>
             </div>
             <div className="sf-stat-row">
               <span className="lab">{t('summary.homeUsage')}</span>
               <span className="val load-c mono">{fmt(metrics.homeConsumptionEnergyToday ?? metrics.loadEnergyToday, 1)}<span className="unit"> kWh</span></span>
+              <span className="val total mono">{totals ? fmt(totals.home, 1) : '—'}<span className="unit"> kWh</span></span>
             </div>
+
             <div className="sf-stat-row">
-              <span className="lab">{t('summary.batteryCycle')}</span>
-              <span className="val battery-c mono">{fmt(metrics.batteryChargeEnergyToday, 1)} <span className="sep">/</span> {fmt(metrics.batteryDischargeEnergyToday, 1)}<span className="unit"> kWh</span></span>
+              <span className="lab">{t('summary.batCharge')}</span>
+              <span className="val battery-c mono">{fmt(metrics.batteryChargeEnergyToday, 1)}<span className="unit"> kWh</span></span>
+              <span className="val total mono">{totals ? <>{totals ? `${fmt(totals.batCharge, 1)} kWh`    : '—'}</> : '—'}<span className="unit"> kWh</span></span>
             </div>
+
+            <div className="sf-stat-row">
+              <span className="lab">{t('summary.batDischarge')}</span>
+              <span className="val battery-c mono">{fmt(metrics.batteryDischargeEnergyToday, 1)}<span className="unit"> kWh</span></span>
+              <span className="val total mono">{totals ? <>{totals ? `${fmt(totals.batDischarge, 1)} kWh`    : '—'}</> : '—'}<span className="unit"> kWh</span></span>
+            </div>
+
             <div className="sf-stat-row">
               <span className="lab">{t('summary.gridImport')}</span>
               <span className="val mono">{fmt(metrics.importEnergyToday, 1)}<span className="unit"> kWh</span></span>
+              <span className="val total mono">{totals ? fmt(totals.gridImport, 1) : '—'}<span className="unit"> kWh</span></span>
             </div>
             <div className="sf-stat-row">
               <span className="lab">{t('summary.gridExport')}</span>
               <span className="val solar-c mono">{fmt(metrics.exportEnergyToday, 1)}<span className="unit"> kWh</span></span>
+              <span className="val total mono">{totals ? fmt(totals.gridExport, 1) : '—'}<span className="unit"> kWh</span></span>
             </div>
             <div className="sf-stat-row">
               <span className="lab">{t('summary.selfSufficiency')}</span>
               <span className="val mono" style={{ color: 'var(--sf-solar)' }}>{fmt(selfSufficiency, 0)}<span className="unit">%</span></span>
+              <span className="val total mono">{totals ? fmt(totals.selfSufficiency, 0) : '—'}<span className="unit">%</span></span>
             </div>
           </section>
         </aside>

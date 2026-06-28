@@ -2683,7 +2683,8 @@ body:has(.dashboard) {
 
 .sf-stat-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr minmax(84px, auto) minmax(84px, auto);
+  column-gap: 12px;
   align-items: baseline;
   padding: 12px 0;
   border-top: 1px solid var(--sf-line-2);
@@ -2694,6 +2695,19 @@ body:has(.dashboard) {
   border-top: none;
 }
 
+/* Column headers (Today / All-time) above the stat rows. */
+.sf-stat-head {
+  padding: 0 0 4px;
+  border-top: none;
+}
+.sf-stat-head .col {
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--sf-ink-3);
+}
+
 .sf-stat-row .lab {
   color: var(--sf-ink-2);
 }
@@ -2701,6 +2715,13 @@ body:has(.dashboard) {
 .sf-stat-row .val {
   font-weight: 600;
   font-size: 15px;
+  text-align: right;
+}
+
+/* The all-time column is secondary — slightly dimmer than today's live value. */
+.sf-stat-row .val.total {
+  color: var(--sf-ink-2);
+  font-size: 14px;
 }
 
 .sf-stat-row .val .sep {
@@ -4006,8 +4027,10 @@ body:has(.dashboard) {
   }
 
   .sfm-list-row {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    column-gap: 14px;
+    align-items: baseline;
     padding: 16px 20px;
     border-bottom: 1px solid var(--sf-line-2);
     font-size: 14px;
@@ -4015,8 +4038,20 @@ body:has(.dashboard) {
 
   .sfm-list-row:last-child { border: 0; }
   .sfm-list-row span { color: var(--sf-ink-2); }
-  .sfm-list-row b { font-weight: 700; }
+  .sfm-list-row b { font-weight: 700; text-align: right; min-width: 64px; }
   .sfm-list-row b.green { color: #45b058; }
+
+  /* Column headers (Today / All-time). */
+  .sfm-list-head {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .sfm-list-head b {
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: .02em;
+    color: var(--sf-ink-3);
+  }
 
   .sfm-nav {
     position: fixed;
