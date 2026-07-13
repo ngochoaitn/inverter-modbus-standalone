@@ -108,7 +108,6 @@ export function mapLuxpower(registers: Registers, opts: MapOptions = {}) {
   // Net inverter throughput (in − out), mirroring PowerFlow's `inverterNet` so the
   // history chart's `inverterPower` metric matches what the flow view displays.
   const getInverterPower = () => {
-    console.log('getInverterPower called');
     const pv      = getPVPower();
     const battery = getBatteryFlow();
     const grid    = getGridFlow();
