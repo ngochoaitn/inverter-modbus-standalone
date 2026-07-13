@@ -105,6 +105,19 @@ export function mapLuxpower(registers: Registers, opts: MapOptions = {}) {
     return discharge - charge;
   };
 
+  // Net inverter throughput (in − out), mirroring PowerFlow's `inverterNet` so the
+  // history chart's `inverterPower` metric matches what the flow view displays.
+  const getInverterPower = () => {
+    console.log('getInverterPower called');
+    const pv      = getPVPower();
+    const battery = getBatteryFlow();
+    const grid    = getGridFlow();
+    const load    = (raw(r, 'input', 170) ?? 0) || Math.max(pv + grid + battery, 0);
+    const invIn   = pv + (raw(r, 'input', 11) ?? 0) + (raw(r, 'input', 27) ?? 0);
+    const invOut  = load + (raw(r, 'input', 10) ?? 0) + (raw(r, 'input', 24) ?? 0);
+    return invIn - invOut;
+  };
+
   const status = raw(r, 'input', 0) ?? 0;
 
   // Grid presence drives which discharge floor applies: on-grid stops at H_EOD_SOC
@@ -204,6 +217,10 @@ export function mapLuxpower(registers: Registers, opts: MapOptions = {}) {
     // Load & EPS
     loadPower: raw(r, 'input', 170) ?? 0,
     epsPower:  raw(r, 'input', 24) ?? 0,
+
+    // Net inverter power (in − out) — same value shown on the flow view, persisted
+    // so the historical `inverterPower` metric has data to chart.
+    inverterPower: getInverterPower(),
 
     // Temperatures (°C) — see Luxpower input registers.
     // Internal: TINNER (64), falling back to NTC-for-INDC (214) when unwired.
