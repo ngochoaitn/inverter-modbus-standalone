@@ -124,6 +124,11 @@ export default function HistoricalGraph({ deviceSn, metric, unit, color, onClose
     setRange({ from: new Date(to.getTime() - 24 * 60 * 60 * 1000).toISOString(), to: to.toISOString() });
   };
 
+  const setLast1h = () => {
+    const to = new Date();
+    setRange({ from: new Date(to.getTime() - 60 * 60 * 1000).toISOString(), to: to.toISOString() });
+  };
+
   const applyRange = () => {
     const from = new Date(fromValue);
     const to = new Date(toValue);
@@ -194,6 +199,7 @@ export default function HistoricalGraph({ deviceSn, metric, unit, color, onClose
             </div>
             <div className="hg-range-btns">
               <button className="hg-apply-btn" onClick={applyRange}>{t('hg.apply')}</button>
+              <button className="hg-apply-btn" onClick={setLast1h}>{t('hg.last1h')}</button>
               <button className="hg-apply-btn" onClick={setLast24h}>{t('hg.last24h')}</button>
             </div>
           </div>
