@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
 import {
   computeMonthSavings, finalizeClosedMonths, getMergedDays, getSnapshots,
-  groupByMonth, currentYm, pricingOf, vatOf, type MonthValue,
+  groupByMonth, currentYm, pricingOf, vatOf, valueBreakdown, type MonthValue,
 } from '@/lib/savings';
 
 // Local "today" key, consistent with the rest of the app which assumes the server
@@ -57,6 +57,18 @@ export async function GET(req: NextRequest) {
     const total = [...monthly.values()].reduce((s, m) => s + m.savings, 0);
     const firstDay = days[0]?.day ?? null;
 
+    // Calculation breakdowns for the two live headline figures (today / month).
+    const curDays = byMonth.get(cur) ?? [];
+    let beforeToday = 0, todaySolar = 0, monthKwh = 0;
+    for (const d of curDays) {
+      const s = Number(d.solar) || 0;
+      monthKwh += s;
+      if (d.day < tKey) beforeToday += s;
+      else if (d.day === tKey) todaySolar = s;
+    }
+    const todayBreakdown = valueBreakdown(pricing, vatPercent, beforeToday, todaySolar);
+    const monthBreakdown = valueBreakdown(pricing, vatPercent, 0, monthKwh);
+
     // 12-month series for the requested year (T1..T12), flagged closed for the lock icon.
     const series = Array.from({ length: 12 }, (_, i) => {
       const ym = `${year}-${String(i + 1).padStart(2, '0')}`;
@@ -82,23 +94,31 @@ export async function GET(req: NextRequest) {
 
       let daysRemaining: number | null = null;
       let basis: 'trailing12' | 'monthlyAvg' | 'dailyAvg' = 'dailyAvg';
+      let ratePerMonth: number | null = null;   // đ/month used for the projection
+      let ratePerDay: number | null = null;     // đ/day (fallback basis)
+      let monthsUsed = 0;                        // how many complete months averaged
+      let elapsedDays = 0;
       if (completeMonths.length >= 12) {
         const last12 = completeMonths.slice(-12).reduce((s, v) => s + v, 0);
         const perMonth = last12 / 12;
-        if (perMonth > 0) { daysRemaining = Math.round((remaining / perMonth) * 30.44); basis = 'trailing12'; }
+        if (perMonth > 0) { daysRemaining = Math.round((remaining / perMonth) * 30.44); basis = 'trailing12'; ratePerMonth = perMonth; monthsUsed = 12; }
       } else if (completeMonths.length >= 1) {
         const perMonth = completeMonths.reduce((s, v) => s + v, 0) / completeMonths.length;
-        if (perMonth > 0) { daysRemaining = Math.round((remaining / perMonth) * 30.44); basis = 'monthlyAvg'; }
+        if (perMonth > 0) { daysRemaining = Math.round((remaining / perMonth) * 30.44); basis = 'monthlyAvg'; ratePerMonth = perMonth; monthsUsed = completeMonths.length; }
       }
       if (daysRemaining == null) {
-        const elapsedDays = installDate
+        elapsedDays = installDate
           ? Math.max(1, Math.round((Date.now() - new Date(installDate).getTime()) / 86_400_000))
           : Math.max(1, days.length);
         const avgPerDay = total / elapsedDays;
+        ratePerDay = avgPerDay;
         daysRemaining = avgPerDay > 0 ? Math.round(remaining / avgPerDay) : null;
       }
 
-      roi = { investmentCost, installDate: installDate ?? null, percent, daysRemaining, basis };
+      roi = {
+        investmentCost, installDate: installDate ?? null, percent, daysRemaining, basis,
+        total, remaining, ratePerMonth, ratePerDay, monthsUsed, elapsedDays,
+      };
     }
 
     return NextResponse.json({
@@ -108,6 +128,8 @@ export async function GET(req: NextRequest) {
       today: Math.round(todayValue),
       month: Math.round(savingsOf(cur)),
       total: Math.round(total),
+      todayBreakdown,
+      monthBreakdown,
       year,
       series,
       roi,

@@ -7,7 +7,10 @@
 // finalize step so the two can never drift.
 
 import db from './db';
-import { normalizePricing, tieredValue, touEffectiveRate, type PricingConfig } from './pricing';
+import {
+  normalizePricing, tieredValue, tieredBreakdown, touEffectiveRate,
+  type PricingConfig, type TierSegment,
+} from './pricing';
 
 const DAILY_SOLAR_SQL = `
   SELECT
@@ -74,6 +77,42 @@ export function computeMonthSavings(
     if (todayKey && d.day === todayKey) todayValue = v;
   }
   return { kwh, savings, todayValue };
+}
+
+// Itemised "how this number was calculated" for one value — valuing `add` kWh
+// starting from `before` kWh already accrued this month (before = 0 for a whole
+// month). VAT-inclusive; all fields are ready for display.
+export interface Breakdown {
+  type: 'tiered' | 'tou';
+  kwh: number;
+  before: number;              // month kWh already accrued before this slice (tiered)
+  segments: TierSegment[];     // tiered: per-tier; empty for tou
+  rate: number;                // tou: blended đ/kWh; 0 for tiered
+  subtotal: number;            // pre-VAT
+  vatPercent: number;
+  vatAmount: number;
+  total: number;               // VAT-inclusive
+}
+
+export function valueBreakdown(
+  pricing: PricingConfig, vatPercent: number, before: number, add: number,
+): Breakdown {
+  const vat = Number.isFinite(vatPercent) ? vatPercent : 8;
+  let segments: TierSegment[] = [];
+  let rate = 0;
+  let subtotal = 0;
+  if (pricing.type === 'tou') {
+    rate = touEffectiveRate(pricing.tou);
+    subtotal = add * rate;
+  } else {
+    segments = tieredBreakdown(before, add, pricing.tiers);
+    subtotal = tieredValue(before, add, pricing.tiers);
+  }
+  const vatAmount = subtotal * (vat / 100);
+  return {
+    type: pricing.type, kwh: add, before, segments, rate,
+    subtotal, vatPercent: vat, vatAmount, total: subtotal + vatAmount,
+  };
 }
 
 export function getSnapshots(deviceSn: string): Map<string, Snapshot> {

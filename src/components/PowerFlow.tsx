@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import {
-  BatteryCharging, ChevronLeft, ChevronRight, Home, MapPin, Maximize2, Settings, Sun, X, Zap,
+  BatteryCharging, ChevronLeft, ChevronRight, Home, Info, MapPin, Maximize2, Settings, Sun, X, Zap,
 } from 'lucide-react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Legend, ReferenceLine,
@@ -45,6 +45,14 @@ function fmtMoney(value: any, tilde = true): string {
     return `${pre}${tr.toFixed(tr >= 10 ? 0 : 1).replace('.', ',')} tr đ`;
   }
   return `${pre}${num.toLocaleString('vi-VN')} đ`;
+}
+
+// kWh with up to 2 decimals, VN grouping. Price as a whole đ number.
+function fmtKwh(value: any): string {
+  return n(value).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+}
+function fmtPrice(value: any): string {
+  return Math.round(n(value)).toLocaleString('vi-VN');
 }
 
 // Compact y-axis money tick: "6tr", "1,5tr", "500k", "0".
@@ -399,14 +407,28 @@ function TrendChart({ data, period, hiddenSeries, onToggle, height = 300 }: {
 
 // ── Savings & ROI ──────────────────────────────────────
 
+interface TierSeg { from: number; to: number; kwh: number; price: number; subtotal: number }
+interface Breakdown {
+  type: 'tiered' | 'tou';
+  kwh: number; before: number; segments: TierSeg[]; rate: number;
+  subtotal: number; vatPercent: number; vatAmount: number; total: number;
+}
 interface SavingsData {
   configured: boolean;
   today?: number;
   month?: number;
   total?: number;
+  todayBreakdown?: Breakdown;
+  monthBreakdown?: Breakdown;
   year?: number;
   series?: { month: number; savings: number; closed?: boolean }[];
-  roi?: { investmentCost: number; installDate: string | null; percent: number; daysRemaining: number | null } | null;
+  roi?: RoiData | null;
+}
+interface RoiData {
+  investmentCost: number; installDate: string | null; percent: number; daysRemaining: number | null;
+  basis: 'trailing12' | 'monthlyAvg' | 'dailyAvg';
+  total: number; remaining: number;
+  ratePerMonth: number | null; ratePerDay: number | null; monthsUsed: number; elapsedDays: number;
 }
 
 function useSavings(deviceSn: string | undefined, year: number, refreshKey: unknown) {
@@ -447,6 +469,110 @@ function useTotals(deviceSn: string | undefined) {
   return data;
 }
 
+// Explains how a headline figure (today / month) was calculated: kWh × tariff
+// (per-tier or blended TOU rate) + VAT, shown as an itemised sum.
+function CalcModal({ title, bd, onClose }: { title: string; bd: Breakdown; onClose: () => void }) {
+  const t = useT();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="sf-chart-modal-backdrop" onClick={onClose}>
+      <div className="sf-calc-modal" onClick={(e: any) => e.stopPropagation()}>
+        <div className="sf-chart-modal-bar">
+          <span className="sf-chart-modal-title">{title}</span>
+          <button className="sf-chart-modal-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="sf-calc-body">
+          <div className="sf-calc-row head">
+            <span>{t('savings.output')}</span><b>{fmtKwh(bd.kwh)} kWh</b>
+          </div>
+
+          {bd.type === 'tiered' ? (
+            <>
+              {bd.before > 0 && (
+                <div className="sf-calc-note">{t('savings.priorMonth')}: {fmtKwh(bd.before)} kWh — {t('savings.priorMonthNote')}</div>
+              )}
+              {bd.segments.map((s, i) => (
+                <div className="sf-calc-row" key={i}>
+                  <span>{fmtKwh(s.from)}–{fmtKwh(s.to)} kWh × {fmtPrice(s.price)}đ</span>
+                  <b>{fmtMoney(s.subtotal, false)}</b>
+                </div>
+              ))}
+              <div className="sf-calc-row sub"><span>{t('savings.subtotal')}</span><b>{fmtMoney(bd.subtotal, false)}</b></div>
+            </>
+          ) : (
+            <>
+              <div className="sf-calc-row"><span>{t('savings.touRate')}</span><b>{fmtPrice(bd.rate)} đ/kWh</b></div>
+              <div className="sf-calc-row sub">
+                <span>{fmtKwh(bd.kwh)} × {fmtPrice(bd.rate)}đ</span><b>{fmtMoney(bd.subtotal, false)}</b>
+              </div>
+            </>
+          )}
+
+          <div className="sf-calc-row"><span>{t('savings.vatLine')} {fmtKwh(bd.vatPercent)}%</span><b>+{fmtMoney(bd.vatAmount, false)}</b></div>
+          <div className="sf-calc-row total"><span>{t('savings.grandTotal')}</span><b>{fmtMoney(bd.total, false)}</b></div>
+        </div>
+        {bd.type === 'tou' && <div className="sf-calc-foot">{t('savings.touExplain')}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Explains the payback (ROI) figures: % recovered and the projected days left,
+// including which run-rate (12-month / complete-month average / daily) was used.
+function RoiModal({ roi, onClose }: { roi: RoiData; onClose: () => void }) {
+  const t = useT();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const rateLabel = roi.basis === 'trailing12' ? t('savings.roiBasisTrailing12')
+    : roi.basis === 'monthlyAvg' ? t('savings.roiBasisMonthly').replace('{n}', String(roi.monthsUsed))
+    : t('savings.roiBasisDaily').replace('{n}', String(roi.elapsedDays));
+  const perMonth = roi.ratePerMonth != null;
+
+  return (
+    <div className="sf-chart-modal-backdrop" onClick={onClose}>
+      <div className="sf-calc-modal" onClick={(e: any) => e.stopPropagation()}>
+        <div className="sf-chart-modal-bar">
+          <span className="sf-chart-modal-title">{t('savings.roiCalc')}</span>
+          <button className="sf-chart-modal-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="sf-calc-body">
+          <div className="sf-calc-row head"><span>{t('savings.roiTotalSaved')}</span><b>{fmtMoney(roi.total, false)}</b></div>
+          <div className="sf-calc-row"><span>{t('savings.roiInvest')}</span><b>{fmtMoney(roi.investmentCost, false)}</b></div>
+          <div className="sf-calc-row sub">
+            <span>{t('savings.roiPercent')} = {fmtMoney(roi.total, false)} / {fmtMoney(roi.investmentCost, false)}</span>
+            <b>{roi.percent}%</b>
+          </div>
+          <div className="sf-calc-row"><span>{t('savings.roiRemaining')}</span><b>{fmtMoney(roi.remaining, false)}</b></div>
+
+          {roi.daysRemaining != null && (
+            <>
+              <div className="sf-calc-row">
+                <span>{rateLabel}</span>
+                <b>{perMonth ? `${fmtPrice(roi.ratePerMonth)} đ/${t('period.month').toLowerCase()}` : `${fmtPrice(roi.ratePerDay)} đ/${t('savings.days')}`}</b>
+              </div>
+              <div className="sf-calc-row total">
+                <span>{t('savings.roiDaysLeft')}
+                  {perMonth ? ` = ${fmtMoney(roi.remaining, false)} / ${fmtPrice(roi.ratePerMonth)} × 30,44` : ` = ${fmtMoney(roi.remaining, false)} / ${fmtPrice(roi.ratePerDay)}`}
+                </span>
+                <b>~{roi.daysRemaining.toLocaleString('vi-VN')} {t('savings.days')}</b>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="sf-calc-foot">{t('savings.roiNote')}</div>
+      </div>
+    </div>
+  );
+}
+
 // "TIẾT KIỆM & ROI" card: headline figures (today / month / total), an ROI badge,
 // and a per-month savings bar chart with year navigation. `onConfigure` opens the
 // settings modal when no tariff is set yet.
@@ -455,6 +581,8 @@ function SavingsCard({ data, year, onYear, onConfigure }: {
 }) {
   const t = useT();
   const thisYear = new Date().getFullYear();
+  const [calc, setCalc] = useState<{ title: string; bd: Breakdown } | null>(null);
+  const [roiOpen, setRoiOpen] = useState(false);
 
   const chartData = useMemo(
     () => (data?.series ?? []).map(s => ({ label: `T${s.month}`, savings: s.savings, closed: !!s.closed })),
@@ -484,26 +612,43 @@ function SavingsCard({ data, year, onYear, onConfigure }: {
   const roi = data?.roi;
 
   return (
+    <>
     <section className="sf-chart-card sf-savings-card">
       <div className="sf-savings-head">
         <div className="sf-card-title"><PiggyIcon /> {t('savings.title')}</div>
         {roi && (
-          <div className="sf-roi-badge">
-            <div className="pct">{t('savings.roiDone')} {roi.percent}%</div>
+          <button type="button" className="sf-roi-badge" onClick={() => setRoiOpen(true)} title={t('savings.howCalc')}>
+            <div className="pct">{t('savings.roiDone')} {roi.percent}% <Info size={11} /></div>
             {roi.daysRemaining != null && roi.daysRemaining > 0 && (
               <div className="days">{t('savings.remaining')} ~{roi.daysRemaining.toLocaleString('vi-VN')} {t('savings.days')}</div>
             )}
-          </div>
+          </button>
         )}
       </div>
 
       <div className="sf-savings-stats">
         <div className="item">
-          <span className="lab">{t('savings.today')}</span>
+          <span className="lab">
+            {t('savings.today')}
+            {data?.todayBreakdown && (
+              <button type="button" className="sf-calc-info" title={t('savings.howCalc')}
+                onClick={() => setCalc({ title: t('savings.todayCalc'), bd: data.todayBreakdown! })}>
+                <Info size={11} />
+              </button>
+            )}
+          </span>
           <strong className="big">{fmtMoney(data?.today)}</strong>
         </div>
         <div className="item">
-          <span className="lab">{t('savings.month')}</span>
+          <span className="lab">
+            {t('savings.month')}
+            {data?.monthBreakdown && (
+              <button type="button" className="sf-calc-info" title={t('savings.howCalc')}
+                onClick={() => setCalc({ title: t('savings.monthCalc'), bd: data.monthBreakdown! })}>
+                <Info size={11} />
+              </button>
+            )}
+          </span>
           <strong>{fmtMoney(data?.month)}</strong>
         </div>
         <div className="item">
@@ -545,6 +690,9 @@ function SavingsCard({ data, year, onYear, onConfigure }: {
         </BarChart>
       </ResponsiveContainer>
     </section>
+    {calc && <CalcModal title={calc.title} bd={calc.bd} onClose={() => setCalc(null)} />}
+    {roiOpen && roi && <RoiModal roi={roi} onClose={() => setRoiOpen(false)} />}
+    </>
   );
 }
 

@@ -2038,13 +2038,25 @@ body:has(.dashboard) {
   margin-bottom: 14px;
 }
 .sf-savings-card .sf-card-title { display: inline-flex; align-items: center; }
-.sf-roi-badge { text-align: right; flex-shrink: 0; }
+.sf-roi-badge {
+  text-align: right;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  padding: 2px 0 2px 8px;
+  cursor: pointer;
+  font: inherit;
+}
 .sf-roi-badge .pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 13px;
   font-weight: 700;
   color: var(--sf-solar);
   font-family: "Inter", sans-serif;
 }
+.sf-roi-badge:hover .pct { text-decoration: underline; }
 .sf-roi-badge .days { font-size: 10px; color: var(--sf-ink-3); margin-top: 1px; }
 
 .sf-savings-stats {
@@ -2068,6 +2080,75 @@ body:has(.dashboard) {
   white-space: nowrap;
 }
 .sf-savings-stats strong.big { font-size: 20px; color: var(--sf-solar); }
+.sf-savings-stats .lab { display: inline-flex; align-items: center; gap: 4px; }
+.sf-calc-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 15px;
+  height: 15px;
+  border: none;
+  background: transparent;
+  color: var(--sf-ink-3);
+  cursor: pointer;
+}
+.sf-calc-info:hover { color: var(--sf-solar); }
+
+/* ── Calculation breakdown modal ───────────────────────── */
+.sf-calc-modal {
+  width: min(420px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--sf-panel);
+  border: 1px solid var(--sf-line);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.sf-calc-body {
+  padding: 6px 16px 14px;
+  overflow-y: auto;
+  font-family: "JetBrains Mono", monospace;
+}
+.sf-calc-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--sf-line);
+}
+.sf-calc-row span { color: var(--sf-ink-2); }
+.sf-calc-row b { color: var(--sf-ink); white-space: nowrap; }
+.sf-calc-row.head { font-weight: 700; }
+.sf-calc-row.head span, .sf-calc-row.head b { color: var(--sf-ink); }
+.sf-calc-row.sub b { color: var(--sf-ink); font-weight: 700; }
+.sf-calc-row.total {
+  border-bottom: none;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 2px solid var(--sf-line);
+  font-size: 14px;
+}
+.sf-calc-row.total span { color: var(--sf-ink); font-weight: 700; }
+.sf-calc-row.total b { color: var(--sf-solar); font-weight: 800; }
+.sf-calc-note {
+  font-size: 11px;
+  color: var(--sf-ink-3);
+  padding: 6px 0;
+  line-height: 1.4;
+  font-family: "Inter", sans-serif;
+}
+.sf-calc-foot {
+  padding: 10px 16px;
+  border-top: 1px solid var(--sf-line);
+  font-size: 11px;
+  color: var(--sf-ink-3);
+  line-height: 1.5;
+}
 
 .sf-savings-chart-head {
   display: flex;

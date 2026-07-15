@@ -122,6 +122,34 @@ export function tieredValue(before: number, add: number, tiers: Tier[]): number 
   return value;
 }
 
+export interface TierSegment {
+  from: number; to: number;   // cumulative-month kWh span this segment covers
+  kwh: number; price: number; subtotal: number;
+}
+
+// Same walk as tieredValue but returns the per-tier segments (for showing the
+// user exactly how the amount was built up).
+export function tieredBreakdown(before: number, add: number, tiers: Tier[]): TierSegment[] {
+  const out: TierSegment[] = [];
+  if (add <= 0 || !tiers.length) return out;
+  let cursor = Math.max(0, before);
+  let remaining = add;
+  for (const tier of tiers) {
+    const upper = tier.to == null ? Infinity : tier.to;
+    if (cursor >= upper) continue;
+    const take = Math.min(remaining, upper - cursor);
+    out.push({ from: cursor, to: cursor + take, kwh: take, price: tier.price, subtotal: take * tier.price });
+    cursor += take;
+    remaining -= take;
+    if (remaining <= 0) break;
+  }
+  if (remaining > 0) {
+    const price = tiers[tiers.length - 1].price;
+    out.push({ from: cursor, to: cursor + remaining, kwh: remaining, price, subtotal: remaining * price });
+  }
+  return out;
+}
+
 // Coerce arbitrary stored/posted JSON into a valid PricingConfig, filling gaps
 // from the defaults so the calculator never sees a malformed shape.
 export function normalizePricing(raw: any): PricingConfig {
