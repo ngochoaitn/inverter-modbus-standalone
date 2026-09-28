@@ -327,18 +327,58 @@ const TREND_SERIES = [
 
 type TrendPeriod = 'day' | 'week' | 'month' | 'year';
 
+interface TrendState {
+  data: any[]; from?: string; to?: string; hasPrev: boolean;
+}
+
+// Trend rows for one period window. `offset` (≤ 0) steps back whole windows
+// (month for 'day', week, year for 'month', 5-year block for 'year'); the API
+// echoes the window bounds and whether older data exists in headers.
 function useTrendChart(deviceSn: string | undefined, period: TrendPeriod) {
-  const [data, setData] = useState<any[]>([]);
+  // Offset is tied to the period it was set under, so switching period starts
+  // back at the current window without an extra fetch at the stale offset.
+  const [nav, setNav] = useState({ period, offset: 0 });
+  const offset = nav.period === period ? nav.offset : 0;
+  const setOffset = (fn: (o: number) => number) => setNav({ period, offset: fn(offset) });
+  const [state, setState] = useState<TrendState>({ data: [], hasPrev: false });
   useEffect(() => {
     if (!deviceSn) return;
     let cancelled = false;
-    fetch(`/api/history/trend?deviceSn=${deviceSn}&period=${period}`)
-      .then(r => r.json())
-      .then(rows => { if (!cancelled) setData(Array.isArray(rows) ? rows : []); })
+    fetch(`/api/history/trend?deviceSn=${deviceSn}&period=${period}&offset=${offset}`)
+      .then(async r => {
+        const rows = await r.json();
+        if (cancelled) return;
+        setState({
+          data: Array.isArray(rows) ? rows : [],
+          from: r.headers.get('X-Range-From') ?? undefined,
+          to: r.headers.get('X-Range-To') ?? undefined,
+          hasPrev: r.headers.get('X-Has-Prev') === '1',
+        });
+      })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [deviceSn, period]);
-  return data;
+  }, [deviceSn, period, offset]);
+  return { ...state, offset, setOffset };
+}
+
+function fmtTrendRange(period: TrendPeriod, from?: string, to?: string) {
+  if (!from || !to) return '';
+  const [fy, fm, fd] = from.split('-');
+  const [ty, tm, td] = to.split('-');
+  if (period === 'year')  return fy === ty ? fy : `${fy} – ${ty}`;
+  if (period === 'month') return fy;
+  if (period === 'week')  return `${fd}/${fm} – ${td}/${tm}/${ty}`;
+  return `${fm}/${fy}`;
+}
+
+function TrendNav({ period, trend }: { period: TrendPeriod; trend: ReturnType<typeof useTrendChart> }) {
+  return (
+    <div className="sf-year-nav">
+      <button type="button" onClick={() => trend.setOffset(o => o - 1)} disabled={!trend.hasPrev}><ChevronLeft size={13} /></button>
+      <span className="mono">{fmtTrendRange(period, trend.from, trend.to)}</span>
+      <button type="button" onClick={() => trend.setOffset(o => Math.min(0, o + 1))} disabled={trend.offset >= 0}><ChevronRight size={13} /></button>
+    </div>
+  );
 }
 
 function fmtTrendLabel(periodStr: string, mode: TrendPeriod) {
@@ -1180,7 +1220,7 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
   const now = useNow();
   const weather = useWeather(config?.weatherLat, config?.weatherLon);
   const chartData = useEnergyChart(deviceSn, selectedDate);
-  const trendData = useTrendChart(deviceSn, trendPeriod);
+  const trend = useTrendChart(deviceSn, trendPeriod);
   const savings = useSavings(deviceSn, savingsYear, config);
   const totals = useTotals(deviceSn);
 
@@ -1435,7 +1475,10 @@ function MobileFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeToggl
                 ))}
               </div>
             </div>
-            <TrendChart data={trendData} period={trendPeriod} hiddenSeries={hiddenTrend} onToggle={toggleTrend} height={240} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+              <TrendNav period={trendPeriod} trend={trend} />
+            </div>
+            <TrendChart data={trend.data} period={trendPeriod} hiddenSeries={hiddenTrend} onToggle={toggleTrend} height={240} />
           </section>
         </>
       ) : (
@@ -1522,7 +1565,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
   const [savingsYear, setSavingsYear] = useState(() => new Date().getFullYear());
 
   const chartData = useEnergyChart(deviceSn, selectedDate);
-  const trendData = useTrendChart(deviceSn, trendPeriod);
+  const trend = useTrendChart(deviceSn, trendPeriod);
   const savings = useSavings(deviceSn, savingsYear, config);
   const totals = useTotals(deviceSn);
 
@@ -1890,6 +1933,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
         <section className="sf-chart-card" style={{ flex: 1 }}>
           <div className="sf-card-head" style={{ alignItems: 'center', marginBottom: 0 }}>
             <div className="sf-card-title">{t('title.historyTrend')}</div>
+            <TrendNav period={trendPeriod} trend={trend} />
             <div className="sf-period-toggle">
               {(['day','week', 'month', 'year'] as TrendPeriod[]).map(p => (
                 <button key={p} className={trendPeriod === p ? 'active' : ''} onClick={() => setTrendPeriod(p)}>
@@ -1899,7 +1943,7 @@ function DesktopFlow({ metrics, config, deviceSn, lastSeenAt, theme, onThemeTogg
             </div>
           </div>
           <TrendChart
-            data={trendData}
+            data={trend.data}
             period={trendPeriod}
             hiddenSeries={hiddenTrendSeries}
             onToggle={k => setHiddenTrendSeries(prev => { const s = new Set(prev); s.has(k) ? s.delete(k) : s.add(k); return s; })}

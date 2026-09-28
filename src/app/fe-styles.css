@@ -2158,7 +2158,11 @@ body:has(.dashboard) {
 }
 .sf-savings-chart-title { font-size: 11px; font-weight: 600; color: var(--sf-ink-2); }
 .sf-year-nav { display: inline-flex; align-items: center; gap: 6px; }
-.sf-year-nav span { font-size: 12px; font-weight: 600; color: var(--sf-ink-2); }
+.sf-year-nav span,
+.sf-card-head .sf-year-nav span {
+  font-size: 12px; font-weight: 600; color: var(--sf-ink-2);
+  letter-spacing: normal; text-transform: none; margin: 0; white-space: nowrap;
+}
 .sf-year-nav button {
   display: inline-flex;
   align-items: center;
